@@ -43,6 +43,8 @@ import {
 import { removeServicePartitionDirectory } from '../../helpers/service-helpers';
 
 const debug = require('../../preload-safe-debug')('Ferdium:ServerApi');
+const GITHUB_RECIPE_CONTENTS_API =
+  'https://api.github.com/repos/ferdium/ferdium-recipes/contents/recipes';
 
 module.paths.unshift(getDevRecipeDirectory(), getRecipeDirectory());
 
@@ -442,35 +444,64 @@ export default class ServerApi {
 
     ensureDirSync(recipeTempDirectory);
 
-    let archivePath: PathOrFileDescriptor;
+    let archivePath: PathOrFileDescriptor | null = null;
+    let downloadErrorText = '';
 
     if (pathExistsSync(internalRecipeFile)) {
       debug('[ServerApi::getRecipePackage] Using internal recipe file');
       archivePath = internalRecipeFile;
     } else {
       debug('[ServerApi::getRecipePackage] Downloading recipe from server');
-      archivePath = tempArchivePath;
 
       const packageUrl = `${apiBase()}/recipes/download/${recipeId}`;
 
-      const res = await window.fetch(packageUrl);
-      debug('Recipe downloaded', recipeId);
-      const blob = await res.blob();
-      const buffer = await blob.arrayBuffer();
-      writeFileSync(tempArchivePath, Buffer.from(buffer));
+      const res = await sendAuthRequest(packageUrl, { method: 'GET' }, false);
+
+      if (res.ok) {
+        archivePath = tempArchivePath;
+        debug('Recipe downloaded', recipeId);
+        const blob = await res.blob();
+        const buffer = await blob.arrayBuffer();
+        writeFileSync(tempArchivePath, Buffer.from(buffer));
+      } else {
+        downloadErrorText = await res.text().catch(() => res.statusText);
+        debug(
+          `[ServerApi::getRecipePackage] Archive download failed for ${recipeId}: ${res.status} ${res.statusText}. Falling back to GitHub recipe source.`,
+          downloadErrorText,
+        );
+      }
     }
-    debug(archivePath);
 
-    await sleep(ms('10ms'));
+    if (archivePath) {
+      debug(archivePath);
+      await sleep(ms('10ms'));
 
-    await tar.x({
-      file: archivePath,
-      cwd: recipeTempDirectory,
-      preservePaths: true,
-      unlink: true,
-      preserveOwner: false,
-      onwarn: x => debug('warn', recipeId, x),
-    });
+      try {
+        await tar.x({
+          file: archivePath,
+          cwd: recipeTempDirectory,
+          preservePaths: true,
+          unlink: true,
+          preserveOwner: false,
+          onwarn: x => debug('warn', recipeId, x),
+        });
+      } catch (error) {
+        // Clean up temp directory on extraction failure
+        removeSync(recipeTempDirectory);
+        throw new Error(
+          `Failed to extract recipe ${recipeId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    } else {
+      try {
+        await this._downloadRecipeFromGitHub(recipeId, recipeTempDirectory);
+      } catch (error) {
+        removeSync(recipeTempDirectory);
+        throw new Error(
+          `Failed to download recipe ${recipeId}. API download error: ${downloadErrorText || 'n/a'}. GitHub fallback error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
 
     await sleep(ms('10ms'));
 
@@ -488,6 +519,64 @@ export default class ServerApi {
     }
 
     return id;
+  }
+
+  async _downloadRecipeFromGitHub(recipeId: string, targetDirectory: string) {
+    const recipeContentsUrl = `${GITHUB_RECIPE_CONTENTS_API}/${encodeURIComponent(recipeId)}?ref=main`;
+    await this._downloadGitHubDirectory(recipeContentsUrl, targetDirectory);
+
+    if (!pathExistsSync(join(targetDirectory, 'package.json'))) {
+      throw new Error(`GitHub recipe '${recipeId}' does not contain package.json`);
+    }
+  }
+
+  async _downloadGitHubDirectory(url: string, targetDirectory: string) {
+    const listingResponse = await window.fetch(url, { method: 'GET' });
+    if (!listingResponse.ok) {
+      throw new Error(
+        `Unable to read GitHub recipe directory (${listingResponse.status} ${listingResponse.statusText})`,
+      );
+    }
+
+    const entries = await listingResponse.json();
+    if (!Array.isArray(entries)) {
+      throw new Error('GitHub recipe response was not a directory listing');
+    }
+
+    ensureDirSync(targetDirectory);
+
+    await Promise.all(
+      entries.map(async (entry: any) => {
+        if (entry.type === 'file') {
+          if (!entry.download_url || typeof entry.download_url !== 'string') {
+            throw new Error(`Missing download URL for file '${entry.name}'`);
+          }
+
+          const fileResponse = await window.fetch(entry.download_url, {
+            method: 'GET',
+          });
+
+          if (!fileResponse.ok) {
+            throw new Error(
+              `Failed to download file '${entry.name}' (${fileResponse.status} ${fileResponse.statusText})`,
+            );
+          }
+
+          const fileBlob = await fileResponse.blob();
+          const fileBuffer = await fileBlob.arrayBuffer();
+          writeFileSync(join(targetDirectory, entry.name), Buffer.from(fileBuffer));
+          return;
+        }
+
+        if (entry.type === 'dir') {
+          const childUrl = `${entry.url}?ref=main`;
+          await this._downloadGitHubDirectory(
+            childUrl,
+            join(targetDirectory, entry.name),
+          );
+        }
+      }),
+    );
   }
 
   // Health Check

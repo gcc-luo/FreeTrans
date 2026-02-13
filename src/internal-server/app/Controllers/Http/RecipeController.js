@@ -102,7 +102,7 @@ class RecipeController {
   async download({ response, params }) {
     // Validate user input
     const validation = await validateAll(params, {
-      recipe: 'required|accepted',
+      recipe: 'required|string',
     });
     if (validation.fails()) {
       return response.status(401).send({

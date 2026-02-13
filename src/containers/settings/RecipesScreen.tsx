@@ -1,4 +1,4 @@
-import { readJsonSync } from 'fs-extra';
+import { pathExistsSync, readJsonSync } from 'fs-extra';
 import { type IReactionDisposer, autorun } from 'mobx';
 import { inject, observer } from 'mobx-react';
 import { Component, type ReactElement } from 'react';
@@ -35,7 +35,13 @@ class RecipesScreen extends Component<IProps, IState> {
   constructor(props: IProps) {
     super(props);
 
-    this.customRecipes = readJsonSync(asarRecipesPath('all.json'));
+    const allJsonPath = asarRecipesPath('all.json');
+    if (pathExistsSync(allJsonPath)) {
+      this.customRecipes = readJsonSync(allJsonPath);
+    } else {
+      // Use empty array as default if file doesn't exist
+      this.customRecipes = [];
+    }
     this.state = {
       needle: null,
       currentFilter: 'featured',

@@ -9,7 +9,13 @@ import {
 } from '@electron/remote';
 import AutoLaunch from 'auto-launch';
 import { ipcRenderer } from 'electron';
-import { readJsonSync, readdirSync, writeJsonSync } from 'fs-extra';
+import {
+  ensureDirSync,
+  pathExistsSync,
+  readJsonSync,
+  readdirSync,
+  writeJsonSync,
+} from 'fs-extra';
 import { action, computed, makeObservable, observable } from 'mobx';
 import moment from 'moment';
 import ms from 'ms';
@@ -374,25 +380,28 @@ export default class AppStore extends TypedStore {
     this._readSandboxes();
 
     // Check partitions of the sandboxes that no longer exist
-    const dir = readdirSync(userDataPath('Partitions'));
-    dir
-      .filter(d => d.startsWith('sandbox-'))
-      .forEach(d => {
-        if (
-          !this.sandboxServices.some(s =>
-            s.id.includes(d.replace('sandbox-', '')),
-          )
-        ) {
-          try {
-            removeServicePartitionDirectory(d);
-          } catch (error) {
-            console.error(
-              'Error while checking service partition directory -',
-              error,
-            );
+    const partitionsPath = userDataPath('Partitions');
+    if (pathExistsSync(partitionsPath)) {
+      const dir = readdirSync(partitionsPath);
+      dir
+        .filter(d => d.startsWith('sandbox-'))
+        .forEach(d => {
+          if (
+            !this.sandboxServices.some(s =>
+              s.id.includes(d.replace('sandbox-', '')),
+            )
+          ) {
+            try {
+              removeServicePartitionDirectory(d);
+            } catch (error) {
+              console.error(
+                'Error while checking service partition directory -',
+                error,
+              );
+            }
           }
-        }
-      });
+        });
+    }
 
     // Check if services in sandboxes still exists, if so, remove their partitions (NOT WORKING!)
     // this.sandboxServices.forEach(sandbox => {
@@ -410,9 +419,16 @@ export default class AppStore extends TypedStore {
   }
 
   _readSandboxes() {
-    this.sandboxServices = readJsonSync(
-      userDataPath('config', 'sandboxes.json'),
-    );
+    const sandboxesPath = userDataPath('config', 'sandboxes.json');
+    
+    if (pathExistsSync(sandboxesPath)) {
+      this.sandboxServices = readJsonSync(sandboxesPath);
+    } else {
+      // Create default empty array if file doesn't exist
+      ensureDirSync(userDataPath('config'));
+      this.sandboxServices = [];
+      writeJsonSync(sandboxesPath, this.sandboxServices);
+    }
   }
 
   _writeSandboxes() {
