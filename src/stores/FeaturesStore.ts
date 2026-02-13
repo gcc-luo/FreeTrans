@@ -80,6 +80,11 @@ export default class FeaturesStore extends TypedStore {
   }
 
   _setupFeatures(): void {
+    if (!window['ferdium']) {
+      setTimeout(() => this._setupFeatures(), 50);
+      return;
+    }
+
     serviceProxy(this.stores);
     basicAuth();
     workspaces(this.stores, this.actions);

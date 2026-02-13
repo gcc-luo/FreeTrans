@@ -9,6 +9,13 @@ const state = ModalState;
 export default function initialize() {
   debug('Initialize basicAuth feature');
 
+  if (!window['ferdium']) {
+    return;
+  }
+  if (!window['ferdium'].features) {
+    window['ferdium'].features = {};
+  }
+
   window['ferdium'].features.basicAuth = {
     state,
   };

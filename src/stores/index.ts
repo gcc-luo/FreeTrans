@@ -2,6 +2,7 @@ import type { RouterStore } from '@superwf/mobx-react-router';
 import type { Actions } from '../actions/lib/actions';
 import type { ApiInterface } from '../api';
 import { communityRecipesStore } from '../features/communityRecipes';
+import { messageTranslatorStore } from '../features/messageTranslator';
 import { todosStore } from '../features/todos';
 import { workspaceStore } from '../features/workspaces';
 import AppStore from './AppStore';
@@ -30,6 +31,7 @@ export interface RealStores {
   workspaces: typeof workspaceStore;
   communityRecipes: typeof communityRecipesStore;
   todos: typeof todosStore;
+  messageTranslator: typeof messageTranslatorStore;
 }
 
 export default (
@@ -53,6 +55,7 @@ export default (
     workspaces: workspaceStore,
     communityRecipes: communityRecipesStore,
     todos: todosStore,
+    messageTranslator: messageTranslatorStore,
   });
 
   // Initialize all stores

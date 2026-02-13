@@ -20,6 +20,15 @@ import FerdiumRoutes from './routes';
 webFrame.setVisualZoomLevelLimits(1, 1);
 
 window.addEventListener('load', () => {
+  // Ensure early startup code can safely write feature state before stores are fully attached.
+  if (!window['ferdium']) {
+    window['ferdium'] = {
+      features: {},
+    };
+  } else if (!window['ferdium'].features) {
+    window['ferdium'].features = {};
+  }
+
   const serverApi = new ServerApi();
   const api = apiFactory(serverApi, new LocalApi());
   const history = createHashHistory();
@@ -29,13 +38,17 @@ window.addEventListener('load', () => {
   const menu = new MenuFactory(stores, actions);
   const touchBar = new TouchBarFactory(stores, actions);
 
+  // Initialize message translator feature
+  const initMessageTranslator = require('./features/messageTranslator').default;
+  initMessageTranslator(stores, actions);
+
   window['ferdium'] = {
     stores,
     actions,
     api,
     menu,
     touchBar,
-    features: {},
+    features: window['ferdium'].features || {},
     render() {
       const preparedApp = (
         <Provider stores={stores} actions={actions}>

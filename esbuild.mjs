@@ -80,6 +80,7 @@ const runEsbuild = async () => {
 
   const myArgs = process.argv.slice(2);
   const isDev = myArgs.includes('--watch');
+  let isLiveReloadEnabled = false;
   log(chalk.blue('Starting with args'), myArgs);
 
   if (fs.existsSync(outDir)) {
@@ -113,7 +114,9 @@ const runEsbuild = async () => {
           log(chalk.red(`watch build failed: ${error}`));
         } else {
           log(chalk.blue('watch build success:'), result);
-          livereload.reload();
+          if (isLiveReloadEnabled) {
+            livereload.reload();
+          }
         }
       },
     },
@@ -130,7 +133,21 @@ const runEsbuild = async () => {
       {},
     );
     log(chalk.green(`Listening on ${serveResult.host}:${serveResult.port}`));
-    livereload.listen();
+    try {
+      livereload.listen();
+      isLiveReloadEnabled = true;
+    } catch (error) {
+      const errMsg = String(error);
+      if (errMsg.includes('EADDRINUSE') || errMsg.includes('35729')) {
+        log(
+          chalk.yellow(
+            'Live reload disabled: port 35729 is already in use. Dev build will continue without auto-reload.',
+          ),
+        );
+      } else {
+        throw error;
+      }
+    }
   } else {
     const endTime = performance.now();
     const duration = endTime - startTime;

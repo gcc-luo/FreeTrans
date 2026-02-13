@@ -716,9 +716,6 @@ class FranzMenu implements StoresProps {
   }
 
   _build(): void {
-    // need to clone object so we don't modify computed (cached) object
-    const serviceTpl = Object.assign([], this.serviceTpl());
-
     // Don't initialize when window['ferdium'] is undefined
     if (window['ferdium'] === undefined) {
       // eslint-disable-next-line no-console
@@ -727,6 +724,13 @@ class FranzMenu implements StoresProps {
     }
 
     const { intl } = window['ferdium'];
+    if (!intl) {
+      return;
+    }
+
+    // need to clone object so we don't modify computed (cached) object
+    const serviceTpl = Object.assign([], this.serviceTpl());
+
     const locked =
       this.stores.settings.app.locked &&
       this.stores.settings.app.isLockingFeatureEnabled &&
@@ -1089,6 +1093,10 @@ class FranzMenu implements StoresProps {
   }
 
   serviceTpl(): MenuItemConstructorOptions[] {
+    if (window['ferdium'] === undefined || !window['ferdium'].intl) {
+      return [];
+    }
+
     const { intl } = window['ferdium'];
     const { user, services, settings } = this.stores;
     if (!user.isLoggedIn) {

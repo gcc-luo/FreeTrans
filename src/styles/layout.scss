@@ -116,7 +116,153 @@ body.win32:not(.isFullScreen) .app .app__content {
     display: flex;
     flex: 1;
     flex-direction: column;
+    min-width: 0;
   }
+
+  .app__service-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .app__service-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.translator-panel {
+  width: 0;
+  flex: 0 0 0;
+  overflow: hidden;
+  background: #f3f4f6;
+  border-left: 1px solid #d6d9de;
+  transition:
+    width 0.2s ease,
+    flex-basis 0.2s ease;
+  z-index: 250;
+  display: flex;
+  flex-direction: column;
+}
+
+.translator-panel.is-open {
+  flex-basis: 300px;
+  width: 300px;
+}
+
+.translator-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid #d6d9de;
+  background: #e2ebf8;
+  height: auto;
+  flex: 0 0 auto;
+}
+
+.translator-panel__header--compact {
+  min-height: 72px;
+}
+
+.translator-panel__title {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-weight: 500;
+  font-size: 13px;
+  height: auto;
+}
+
+.translator-panel__body {
+  padding: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: block;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.translator-card {
+  background: #f6f7f8;
+  border: 1px solid #d9dde3;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 0;
+  height: auto;
+}
+
+.translator-setting-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+  column-gap: 8px;
+  margin-bottom: 6px;
+  height: auto;
+}
+
+.translator-setting-row label {
+  color: #1f2937;
+  font-size: 12px;
+}
+
+.translator-setting-row select {
+  height: 28px;
+  border: 1px solid #cfd5dd;
+  border-radius: 4px;
+  background: #eceff3;
+  color: #5b6472;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.translator-toggle-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+  column-gap: 8px;
+  margin-top: 6px;
+  height: auto;
+}
+
+.translator-toggle-row span {
+  color: #1f2937;
+  font-size: 12px;
+}
+
+.translator-switch {
+  width: 38px;
+  height: 20px;
+  border-radius: 999px;
+  border: none;
+  background: #d1d5db;
+  position: relative;
+  justify-self: start;
+  transition: background 0.2s ease;
+}
+
+.translator-switch.is-on {
+  background: #7cb2f4;
+}
+
+.translator-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  transition: transform 0.2s ease;
+}
+
+.translator-switch.is-on .translator-switch__thumb {
+  transform: translateX(18px);
 }
 
 .electron-app-title-bar {

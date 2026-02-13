@@ -56,6 +56,7 @@ import { openExternalUrl } from './helpers/url-helpers';
 import userAgent from './helpers/userAgent-helpers';
 import generatedTranslations from './i18n/translations';
 import { darkThemeGrayDarkest } from './themes/legacy';
+import { shutdownServer } from './electron/ipc-api';
 
 const debug = require('./preload-safe-debug')('Ferdium:App');
 
@@ -364,8 +365,11 @@ const createWindow = () => {
       }
     } else if (!overrideAppQuitForUpdate) {
       debug('Quitting the app');
-      dbus.stop();
-      app.quit();
+      // 优雅关闭内部服务器
+      gracefulShutdown().then(() => {
+        dbus.stop();
+        app.quit();
+      });
     }
   });
 
@@ -553,13 +557,115 @@ app.on('login', (event, _webContents, _request, authInfo, callback) => {
 
 ipcMain.handle(
   'translate',
-  async (_e, { text, translateToLanguage, translatorEngine }) => {
-    const response = await translateTo(
-      text,
+  async (_e, { text, translateToLanguage, translatorEngine, fromLanguage }) => {
+    debug('IPC translate handle called:', {
+      textLength: text?.length,
+      textPreview: text?.substring(0, 50),
       translateToLanguage,
       translatorEngine,
-    );
-    return response;
+      fromLanguage,
+    });
+    
+    try {
+      const response = await translateTo(
+        text,
+        translateToLanguage,
+        translatorEngine || 'Baidu',
+        {
+          fromLanguage,
+        },
+      );
+      
+      debug('IPC translate handle response:', {
+        success: !response.error,
+        textLength: response.text?.length,
+        textPreview: response.text?.substring(0, 50),
+        error: response.error,
+      });
+      
+      return response;
+    } catch (error) {
+      debug('IPC translate handle error:', error);
+      return {
+        text: `Translation error: ${error instanceof Error ? error.message : String(error)}`,
+        error: true,
+      };
+    }
+  },
+);
+
+// Handle translation requests from webview (translator feature)
+ipcMain.on(
+  'translator:translate-message',
+  async (
+    event,
+    { serviceId, requestId, text, fromLang, toLang, translatorEngine },
+  ) => {
+    try {
+      debug('Translation request:', {
+        serviceId,
+        requestId,
+        text: text.substring(0, 50),
+        fromLang,
+        toLang,
+        translatorEngine,
+      });
+
+      // 准备翻译选项，包括百度 API 配置
+      // translateTo 函数会从环境变量或内置配置中获取百度 API 密钥
+      const translateOptions: any = {
+        fromLanguage: fromLang,
+      };
+
+      // 如果使用百度翻译，尝试从环境变量获取配置（translateTo 内部会使用内置配置作为后备）
+      if (translatorEngine === 'Baidu') {
+        translateOptions.baiduAppId =
+          process.env.BAIDU_TRANSLATE_APP_ID ||
+          process.env.BAIDU_APP_ID ||
+          undefined;
+        translateOptions.baiduSecretKey =
+          process.env.BAIDU_TRANSLATE_SECRET_KEY ||
+          process.env.BAIDU_SECRET_KEY ||
+          undefined;
+      }
+
+      const response = await translateTo(
+        text,
+        toLang,
+        translatorEngine || 'Baidu',
+        translateOptions,
+      );
+
+      debug('Translation response:', {
+        serviceId,
+        requestId,
+        success: !response.error,
+        textLength: response.text?.length,
+        error: response.error,
+      });
+
+      // Send result back to the renderer process, which will forward it to the webview
+      if (mainWindow && serviceId) {
+        mainWindow.webContents.send('translator:translation-result', {
+          serviceId,
+          requestId,
+          success: !response.error,
+          text: response.text,
+          error: response.error,
+        });
+      }
+    } catch (error) {
+      debug('Translation error:', error);
+      if (mainWindow && serviceId) {
+        mainWindow.webContents.send('translator:translation-result', {
+          serviceId,
+          requestId,
+          success: false,
+          text: `Translation error: ${error instanceof Error ? error.message : String(error)}`,
+          error: true,
+        });
+      }
+    }
   },
 );
 
@@ -761,7 +867,7 @@ ipcMain.on('toggle-pause-download', (_e, data) => {
 });
 
 // Quit when all windows are closed.
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   // On macos it is common for applications and their menu bar to stay active until the user quits explicitly with Cmd + Q
   if (
     retrieveSettingValue(
@@ -771,6 +877,8 @@ app.on('window-all-closed', () => {
   ) {
     debug('Window: all windows closed, quit app');
     if (!overrideAppQuitForUpdate) {
+      // 优雅关闭服务器后再退出
+      await gracefulShutdown();
       // TODO: based on https://github.com/electron-userland/electron-builder/issues/6058#issuecomment-1130344017 (not yet tested since we don't have signed builds yet for macos)
       app.quit();
     }
@@ -784,7 +892,21 @@ appEvents.on('install-update', () => {
   overrideAppQuitForUpdate = true;
 });
 
-app.on('before-quit', event => {
+/**
+ * 优雅关闭应用：关闭内部服务器和其他资源
+ */
+async function gracefulShutdown(): Promise<void> {
+  debug('Starting graceful shutdown...');
+  try {
+    // 关闭内部服务器
+    await shutdownServer();
+    debug('Internal server closed');
+  } catch (error) {
+    debug('Error during graceful shutdown:', error);
+  }
+}
+
+app.on('before-quit', async event => {
   const yesButtonIndex = 0;
   let selection = yesButtonIndex;
   if (
@@ -799,6 +921,8 @@ app.on('before-quit', event => {
   }
   if (selection === yesButtonIndex) {
     willQuitApp = true;
+    // 在退出前优雅关闭服务器
+    await gracefulShutdown();
   } else {
     event.preventDefault();
   }
@@ -829,6 +953,31 @@ app.on('will-finish-launching', () => {
       handleDeepLink(window, url);
     });
   });
+});
+
+// 处理进程信号（Ctrl+C, SIGTERM 等）
+process.on('SIGINT', async () => {
+  debug('Received SIGINT, shutting down gracefully...');
+  await gracefulShutdown();
+  app.quit();
+});
+
+process.on('SIGTERM', async () => {
+  debug('Received SIGTERM, shutting down gracefully...');
+  await gracefulShutdown();
+  app.quit();
+});
+
+// 处理未捕获的异常
+process.on('uncaughtException', async error => {
+  debug('Uncaught exception:', error);
+  await gracefulShutdown();
+  app.quit();
+});
+
+process.on('unhandledRejection', async (reason, promise) => {
+  debug('Unhandled rejection at:', promise, 'reason:', reason);
+  // 不立即退出，只记录错误
 });
 
 app.on(

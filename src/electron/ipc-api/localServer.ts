@@ -3,7 +3,7 @@ import { createServer } from 'node:net';
 import { type BrowserWindow, ipcMain } from 'electron';
 import { LOCAL_HOSTNAME, LOCAL_PORT } from '../../config';
 import { userDataPath } from '../../environment-remote';
-import { server } from '../../internal-server/start';
+import { server, shutdownServer } from '../../internal-server/start';
 
 const debug = require('../../preload-safe-debug')('Ferdium:LocalServer');
 
@@ -56,4 +56,48 @@ export default (params: { mainWindow: BrowserWindow }) => {
       console.error('Error while starting local server', error);
     });
   });
+
+  // 添加关闭服务器的 IPC 处理器
+  ipcMain.on('stopLocalServer', async () => {
+    debug('Stopping local server...');
+    await shutdownServer();
+    localServerStarted = false;
+    debug('Local server stopped');
+  });
+
+  // 添加重启服务器的 IPC 处理器
+  ipcMain.on('restartLocalServer', async () => {
+    debug('Restarting local server...');
+    await shutdownServer();
+    localServerStarted = false;
+    
+    // 重新启动服务器
+    setTimeout(async () => {
+      try {
+        port = LOCAL_PORT;
+        // eslint-disable-next-line no-await-in-loop
+        while ((await portInUse(port)) && port < LOCAL_PORT + 10) {
+          port += 1;
+        }
+        token = randomBytes(256 / 8).toString('base64url');
+        debug(
+          'Restarting local server at',
+          `http://localhost:${port}/token/${token}`,
+        );
+        await server(userDataPath(), port, token);
+        localServerStarted = true;
+        
+        // 通知渲染进程服务器已重启
+        params.mainWindow.webContents.send('localServerPort', {
+          port,
+          token,
+        });
+      } catch (error) {
+        console.error('Error while restarting local server', error);
+      }
+    }, 500);
+  });
 };
+
+// 导出关闭函数供主进程使用
+export { shutdownServer };

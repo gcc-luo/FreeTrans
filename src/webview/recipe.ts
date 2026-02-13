@@ -112,6 +112,19 @@ window.open = (url, frameName, features): WindowProxy | null => {
 // then overwrite the corresponding field of the window object by injected JS.
 contextBridge.exposeInMainWorld('ferdium', {
   open: window.open,
+  ipcRenderer: {
+    sendToHost: (channel: string, payload?: unknown) =>
+      ipcRenderer.sendToHost(channel, payload),
+    invoke: (channel: string, payload?: unknown) =>
+      ipcRenderer.invoke(channel, payload),
+    on: (
+      channel: string,
+      listener: (
+        event: Electron.IpcRendererEvent,
+        ...args: unknown[]
+      ) => void,
+    ) => ipcRenderer.on(channel, listener),
+  },
   setBadge: (
     direct: string | number | null | undefined,
     indirect: string | number | null | undefined,

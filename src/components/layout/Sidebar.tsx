@@ -9,6 +9,7 @@ import {
   mdiLock,
   mdiMenu,
   mdiPlusBox,
+  mdiTranslate,
   mdiViewGrid,
   mdiViewSplitVertical,
 } from '@mdi/js';
@@ -33,6 +34,7 @@ import {
 } from '../../environment';
 import { todosStore } from '../../features/todos';
 import { todoActions } from '../../features/todos/actions';
+import { translatorActions } from '../../features/messageTranslator/actions';
 import globalMessages from '../../i18n/globalMessages';
 import type Service from '../../models/Service';
 import type { RealStores } from '../../stores';
@@ -71,6 +73,10 @@ const messages = defineMessages({
   closeTodosDrawer: {
     id: 'sidebar.closeTodosDrawer',
     defaultMessage: 'Close Ferdium Todos',
+  },
+  toggleTranslatorPanel: {
+    id: 'sidebar.toggleTranslatorPanel',
+    defaultMessage: 'Toggle translator panel',
   },
   lockFerdium: {
     id: 'sidebar.lockFerdium',
@@ -189,6 +195,7 @@ class Sidebar extends Component<IProps, IState> {
     const { isMenuCollapsed } = stores!.settings.all.app;
 
     const { isDownloading, justFinishedDownloading } = stores!.app;
+    const activeService = this.props.services.find(service => service.isActive);
 
     return (
       <div className="sidebar">
@@ -320,6 +327,28 @@ class Sidebar extends Component<IProps, IState> {
             )} (${todosToggleShortcutKey(false)})`}
           >
             <Icon icon={mdiCheckAll} size={1.5} />
+          </button>
+        ) : null}
+        {!isMenuCollapsed ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (activeService) {
+                translatorActions.togglePanel({ serviceId: activeService.id });
+              }
+            }}
+            className={`sidebar__button sidebar__button--translator ${
+              stores!.messageTranslator?.isPanelVisible ? 'is-active' : ''
+            }`}
+            data-tooltip-id="tooltip-sidebar-button"
+            data-tooltip-content={
+              stores!.settings.all.app.enableTranslator
+                ? intl.formatMessage(messages.toggleTranslatorPanel)
+                : `${intl.formatMessage(messages.toggleTranslatorPanel)}（翻译功能未开启）`
+            }
+            disabled={!activeService}
+          >
+            <Icon icon={mdiTranslate} size={1.5} />
           </button>
         ) : null}
         {stores!.settings.all.app.isLockingFeatureEnabled ? (

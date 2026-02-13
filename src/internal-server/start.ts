@@ -44,6 +44,9 @@ async function ensureDB(dbPath: string): Promise<void> {
   }
 }
 
+let httpServerInstance: any = null;
+let ignitorInstance: any = null;
+
 export const server = async (userPath: string, port: number, token: string) => {
   const dbPath = join(userPath, 'server.sqlite');
   await ensureDB(dbPath);
@@ -57,13 +60,15 @@ export const server = async (userPath: string, port: number, token: string) => {
 
   return new Promise<void>((resolve, reject) => {
     let returned = false;
-    hooks.after.httpServer(() => {
+    hooks.after.httpServer((server: any) => {
+      // 保存服务器实例以便后续关闭
+      httpServerInstance = server;
       if (!returned) {
         resolve();
         returned = true;
       }
     });
-    new Ignitor(fold)
+    ignitorInstance = new Ignitor(fold)
       .appRoot(__dirname)
       .fireHttpServer()
       .catch(error => {
@@ -73,5 +78,34 @@ export const server = async (userPath: string, port: number, token: string) => {
           reject(error);
         }
       });
+  });
+};
+
+/**
+ * 优雅关闭内部服务器
+ */
+export const shutdownServer = async (): Promise<void> => {
+  return new Promise<void>((resolve) => {
+    if (httpServerInstance) {
+      httpServerInstance.close(() => {
+        console.log('Internal server closed gracefully');
+        httpServerInstance = null;
+        ignitorInstance = null;
+        resolve();
+      });
+      
+      // 强制关闭超时（10秒）
+      setTimeout(() => {
+        if (httpServerInstance) {
+          console.log('Force closing internal server');
+          httpServerInstance.close();
+          httpServerInstance = null;
+          ignitorInstance = null;
+        }
+        resolve();
+      }, 10000);
+    } else {
+      resolve();
+    }
   });
 };

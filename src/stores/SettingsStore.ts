@@ -94,7 +94,12 @@ export default class SettingsStore extends TypedStore {
       ) {
         process.nextTick(() => {
           if (!this.all.app.locked) {
-            this.all.app.locked = true;
+            this.actions.settings.update({
+              type: 'app',
+              data: {
+                locked: true,
+              },
+            });
           }
         });
       }

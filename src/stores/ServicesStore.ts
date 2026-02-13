@@ -147,6 +147,35 @@ export default class ServicesStore extends TypedStore {
       this._checkForActiveService.bind(this),
     ]);
 
+    // Listen for translation results from main process
+    ipcRenderer.on('translator:translation-result', (_, result) => {
+      debug('Received translation result from main process:', {
+        serviceId: result.serviceId,
+        requestId: result.requestId,
+        success: result.success,
+        textLength: result.text?.length,
+        error: result.error,
+      });
+      
+      const { serviceId, requestId, success, text, error } = result;
+      if (serviceId && this.one(serviceId)?.webview) {
+        debug('Forwarding translation result to webview:', serviceId);
+        // Forward translation result to webview
+        this.one(serviceId).webview.send('translator:translation-result', {
+          requestId,
+          success,
+          text,
+          error,
+        });
+      } else {
+        debug('Cannot forward translation result:', {
+          hasServiceId: !!serviceId,
+          hasService: !!this.one(serviceId),
+          hasWebview: !!this.one(serviceId)?.webview,
+        });
+      }
+    });
+
     // Just bind this
     this._initializeServiceRecipeInWebview.bind(this);
   }
@@ -849,6 +878,55 @@ export default class ServicesStore extends TypedStore {
         break;
       }
 
+      case 'translator:translate-message': {
+        debug('Received translation request from', serviceId, args[0]);
+        // Forward translation request to main process
+        // MVP 版本：固定使用 LibreTranslate（开源免费）
+        ipcRenderer.send('translator:translate-message', {
+          serviceId,
+          ...args[0],
+        });
+        break;
+      }
+
+      case 'translator:initialized': {
+        const initData = args[0] || {};
+        console.log('[ServicesStore] Translator initialized for', serviceId, {
+          serviceId: initData.serviceId || serviceId,
+          settings: initData.settings,
+        });
+        debug('Translator initialized for', serviceId, initData);
+        // Notify messageTranslator store
+        if (this.stores?.messageTranslator && initData) {
+          this.stores.messageTranslator._handleClientMessage({
+            channel: 'translator:client',
+            message: {
+              action: 'translator:initialized',
+              data: initData,
+            },
+          });
+        }
+        break;
+      }
+
+      case 'translator:settings-changed': {
+        debug('Translator settings changed for', serviceId, args[0]);
+        // Notify messageTranslator store
+        if (this.stores?.messageTranslator && args[0]) {
+          this.stores.messageTranslator._handleClientMessage({
+            channel: 'translator:client',
+            message: {
+              action: 'translator:settings-changed',
+              data: {
+                serviceId,
+                ...args[0],
+              },
+            },
+          });
+        }
+        break;
+      }
+
       case 'notification': {
         const { notificationId, options } = args[0];
 
@@ -993,8 +1071,23 @@ export default class ServicesStore extends TypedStore {
     // Make sure the args are clean, otherwise ElectronJS can't transmit them
     const cleanArgs = cleanseJSObject(args);
 
+    if (channel === 'translator:configure') {
+      debug('Sending translator config to webview:', {
+        serviceId,
+        channel,
+        args: cleanArgs,
+      });
+    }
+
     if (service.webview) {
       service.webview.send(channel, cleanArgs);
+    } else {
+      debug('Cannot send IPC message, webview not available:', {
+        serviceId,
+        channel,
+        hasService: !!service,
+        hasWebview: !!service?.webview,
+      });
     }
   }
 

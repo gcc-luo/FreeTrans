@@ -7,7 +7,7 @@ import dnd from './dnd';
 import download from './download';
 import focusState from './focusState';
 import languageDetect from './languageDetect';
-import localServer from './localServer';
+import localServer, { shutdownServer } from './localServer';
 import processManager from './processManager';
 import sessionStorage from './sessionStorage';
 import settings from './settings';
@@ -28,3 +28,6 @@ export default (params: {
   dnd();
   focusState(params);
 };
+
+// 导出关闭函数供外部使用
+export { shutdownServer };

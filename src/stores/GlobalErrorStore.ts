@@ -20,6 +20,17 @@ interface Message {
   line?: number;
 }
 
+const isIgnorableConsoleNoise = (args: any[]): boolean => {
+  const first = typeof args?.[0] === 'string' ? args[0] : '';
+  if (!first) return false;
+
+  return (
+    first.includes('Warning: findDOMNode is deprecated') ||
+    first.includes('Request Autofill.enable failed') ||
+    first.includes('Request Autofill.setAddresses failed')
+  );
+};
+
 export default class GlobalErrorStore extends TypedStore {
   @observable error: any | null = null;
 
@@ -40,6 +51,9 @@ export default class GlobalErrorStore extends TypedStore {
 
     const origConsoleError = console.error;
     window.console.error = (...errorArgs: any[]) => {
+      if (isIgnorableConsoleNoise(errorArgs)) {
+        return;
+      }
       // @ts-expect-error ts-message: Expected 5 arguments, but got 2.
       this._handleConsoleError.call(this, ['error', ...errorArgs]);
       origConsoleError.apply(this, errorArgs);
@@ -94,8 +108,8 @@ export default class GlobalErrorStore extends TypedStore {
         } catch {
           this.response = {} as Response;
         }
-        if (this.error?.status === 401) {
-          window['ferdium'].stores.app.authRequestFailed = true;
+        if (this.error?.status === 401 && this.stores?.app) {
+          this.stores.app.authRequestFailed = true;
         }
       }
 
@@ -108,10 +122,12 @@ export default class GlobalErrorStore extends TypedStore {
         } as Request,
         error: this.error,
         response: this.response,
-        server: window['ferdium'].stores.settings.app.server,
+        server: this.stores?.settings?.app?.server,
       });
     } else {
-      window['ferdium'].stores.app.authRequestFailed = false;
+      if (this.stores?.app) {
+        this.stores.app.authRequestFailed = false;
+      }
     }
   };
 }

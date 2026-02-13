@@ -14,6 +14,13 @@ export default function initialize() {
     state.isModalVisible = true;
   };
 
+  if (!window['ferdium']) {
+    return;
+  }
+  if (!window['ferdium'].features) {
+    window['ferdium'].features = {};
+  }
+
   window['ferdium'].features.quickSwitch = {
     state,
     showModal,

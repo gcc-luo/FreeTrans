@@ -36,7 +36,12 @@ class ServiceWebview extends Component<IProps> {
       () => {
         if (this.webview?.view) {
           this.webview.view.addEventListener('console-message', e => {
-            debug('Service logged a message:', e.message);
+            const message = e.message || '';
+            // 如果是翻译相关的日志，直接输出到控制台
+            if (message.includes('[Ferdium Translator]')) {
+              console.log('[WebView Console]', message);
+            }
+            debug('Service logged a message:', message);
           });
           this.webview.view.addEventListener('did-navigate', () => {
             if (this.props.service._webview) {

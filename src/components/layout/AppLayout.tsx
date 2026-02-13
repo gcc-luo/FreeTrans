@@ -15,6 +15,7 @@ import { Outlet } from 'react-router-dom';
 import { Component as BasicAuth } from '../../features/basicAuth';
 import { Component as PublishDebugInfo } from '../../features/publishDebugInfo';
 import { Component as QuickSwitch } from '../../features/quickSwitch';
+import { Component as MessageTranslatorPanel } from '../../features/messageTranslator';
 import { updateVersionParse } from '../../helpers/update-helpers';
 import InfoBar from '../ui/InfoBar';
 import ErrorBoundary from '../util/ErrorBoundary';
@@ -58,11 +59,6 @@ const styles = (theme: { workspaces: { drawer: { width: any } } }) => ({
     // width: `calc(100% + ${theme.workspaces.drawer.width}px)`,
     width: '100%',
     transition,
-    transform() {
-      return workspaceStore.isWorkspaceDrawerOpen
-        ? 'translateX(0)'
-        : `translateX(-${theme.workspaces.drawer.width}px)`;
-    },
   },
   titleBar: {
     display: 'block',
@@ -133,6 +129,11 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
     } = this.props;
 
     const { intl } = this.props;
+    const drawerWidth =
+      (this.props as any).theme?.workspaces?.drawer?.width ?? 300;
+    const contentTransform = workspaceStore.isWorkspaceDrawerOpen
+      ? 'translateX(0)'
+      : `translateX(-${drawerWidth}px)`;
 
     const { locked, automaticUpdates } = settings.app;
     if (locked) {
@@ -156,7 +157,10 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
                 className={classes.titleBar}
               />
             )}
-            <div className={`app__content ${classes.appContent}`}>
+            <div
+              className={`app__content ${classes.appContent}`}
+              style={{ transform: contentTransform }}
+            >
               {workspacesDrawer}
               {sidebar}
               <div className="app__service">
@@ -219,8 +223,13 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
                 <BasicAuth />
                 <QuickSwitch />
                 <PublishDebugInfo />
-                {services}
-                <Outlet />
+                <div className="app__service-body">
+                  <div className="app__service-main">
+                    {services}
+                    <Outlet />
+                  </div>
+                  <MessageTranslatorPanel />
+                </div>
               </div>
               <Todos />
             </div>

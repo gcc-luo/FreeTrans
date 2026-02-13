@@ -13,5 +13,12 @@ export default function initialize(): void {
     state.isModalVisible = true;
   };
 
+  if (!window['ferdium']) {
+    return;
+  }
+  if (!window['ferdium'].features) {
+    window['ferdium'].features = {};
+  }
+
   window['ferdium'].features.publishDebugInfo = { state, showModal };
 }

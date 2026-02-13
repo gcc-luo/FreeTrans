@@ -608,6 +608,9 @@ export default class AppStore extends TypedStore {
   }
 
   @action _healthCheck() {
+    if (!window['ferdium']?.stores?.settings?.all?.app?.server) {
+      return;
+    }
     this.healthCheckRequest.execute();
   }
 
