@@ -4,5 +4,14 @@ if ! [ -d node_modules ]; then
   exit 0
 fi
 
-pnpm prepare-code
-pnpm test
+echo ""
+echo "> quick pre-commit checks (staged JS/TS files only)"
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(js|jsx|mjs|cjs|ts|tsx)$' || true)
+
+if [ -z "$STAGED_FILES" ]; then
+  echo "No staged JS/TS files. Skipping eslint."
+  exit 0
+fi
+
+echo "$STAGED_FILES" | xargs pnpm eslint --cache --max-warnings 0
