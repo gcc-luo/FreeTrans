@@ -928,6 +928,23 @@ export default class ServicesStore extends TypedStore {
         break;
       }
 
+      case 'translator:incoming-language-detected': {
+        debug('Translator incoming language detected for', serviceId, args[0]);
+        if (this.stores?.messageTranslator && args[0]) {
+          this.stores.messageTranslator._handleClientMessage({
+            channel: 'translator:client',
+            message: {
+              action: 'translator:incoming-language-detected',
+              data: {
+                serviceId,
+                ...args[0],
+              },
+            },
+          });
+        }
+        break;
+      }
+
       case 'notification': {
         const { notificationId, options } = args[0];
 

@@ -51,6 +51,7 @@ import { appId } from './package.json';
 
 import { asarPath } from './helpers/asar-helpers';
 import { checkIfCertIsPresent } from './helpers/certs-helpers';
+import { getTranslationCache } from './helpers/translation-cache';
 import { translateTo } from './helpers/translation-helpers';
 import { openExternalUrl } from './helpers/url-helpers';
 import userAgent from './helpers/userAgent-helpers';
@@ -101,6 +102,11 @@ if (isWindows) {
 const settings = new Settings('app', DEFAULT_APP_SETTINGS);
 const proxySettings = new Settings('proxy');
 const shortcutSettings = new Settings('shortcuts', DEFAULT_SHORTCUTS);
+const TRANSLATION_RESULT_CACHE_FILE = userDataPath(
+  'config',
+  'translation-result-cache-v1.json',
+);
+const TRANSLATION_RESULT_CACHE_MAX_ENTRIES = 5000;
 
 const retrieveSettingValue = (key: string, defaultValue: boolean | string) =>
   ifUndefined<boolean | string>(settings.get(key), defaultValue);
@@ -572,6 +578,7 @@ ipcMain.handle(
         translatorEngine || 'Baidu',
         {
           fromLanguage,
+          cacheFilePath: TRANSLATION_RESULT_CACHE_FILE,
         },
       );
 
@@ -614,6 +621,7 @@ ipcMain.on(
       // translateTo 鍑芥暟浼氫粠鐜鍙橀噺鎴栧唴缃厤缃腑鑾峰彇鐧惧害 API 瀵嗛挜
       const translateOptions: any = {
         fromLanguage: fromLang,
+        cacheFilePath: TRANSLATION_RESULT_CACHE_FILE,
       };
 
       // 濡傛灉浣跨敤鐧惧害缈昏瘧锛屽皾璇曚粠鐜鍙橀噺鑾峰彇閰嶇疆锛坱ranslateTo 鍐呴儴浼氫娇鐢ㄥ唴缃厤缃綔涓哄悗澶囷級
@@ -664,6 +672,78 @@ ipcMain.on(
           error: true,
         });
       }
+    }
+  },
+);
+
+ipcMain.handle(
+  'translator:lookup-original',
+  async (
+    _event,
+    {
+      translatedText,
+      fromLanguage,
+      toLanguage,
+      translatorEngine,
+    }: {
+      translatedText: string;
+      fromLanguage?: string;
+      toLanguage?: string;
+      translatorEngine?: string;
+    },
+  ) => {
+    try {
+      const cache = getTranslationCache(
+        TRANSLATION_RESULT_CACHE_FILE,
+        TRANSLATION_RESULT_CACHE_MAX_ENTRIES,
+      );
+      if (!cache) {
+        return { found: false, text: '' };
+      }
+
+      const normalizedTranslatedText = String(translatedText || '').trim();
+      const normalizedFromLanguage = String(fromLanguage || '').trim();
+      const normalizedToLanguage = String(toLanguage || '').trim();
+      const normalizedEngine = String(translatorEngine || '').trim();
+
+      let originalText =
+        cache.lookupOriginalByTranslatedText({
+          translatedText: normalizedTranslatedText,
+          fromLanguage: normalizedFromLanguage,
+          toLanguage: normalizedToLanguage,
+          engine: normalizedEngine,
+        }) || '';
+
+      // Fallback for history rendering when the current configured language
+      // changed after the message was translated.
+      if (!originalText && normalizedTranslatedText) {
+        originalText =
+          cache.lookupOriginalByTranslatedText({
+            translatedText: normalizedTranslatedText,
+            fromLanguage: normalizedFromLanguage,
+            toLanguage: '',
+            engine: normalizedEngine,
+          }) || '';
+      }
+
+      if (!originalText && normalizedTranslatedText) {
+        originalText =
+          cache.lookupOriginalByTranslatedText({
+            translatedText: normalizedTranslatedText,
+            fromLanguage: '',
+            toLanguage: '',
+            engine: normalizedEngine,
+          }) || '';
+      }
+      return {
+        found: !!originalText,
+        text: originalText || '',
+      };
+    } catch (error) {
+      debug('translator:lookup-original failed', {
+        error,
+      });
+      return { found: false, text: '' };
     }
   },
 );

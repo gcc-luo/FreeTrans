@@ -4,6 +4,7 @@ import {
   TRANSLATOR_ENGINE_LIBRETRANSLATE,
 } from '../config';
 import { translateWithBaidu } from './baidu-translate';
+import { getTranslationCache } from './translation-cache';
 
 const debug = require('../preload-safe-debug')('Ferdium:Translation');
 
@@ -23,12 +24,52 @@ export interface TranslateOptions {
   fromLanguage?: string;
   baiduAppId?: string;
   baiduSecretKey?: string;
+  cacheFilePath?: string;
+  cacheMaxEntries?: number;
 }
 
+const LANGUAGE_ALIAS_MAP: Record<string, string> = {
+  auto: 'auto',
+  chinese: 'zh-CN',
+  english: 'en',
+  japanese: 'ja',
+  korean: 'ko',
+  french: 'fr',
+  german: 'de',
+  spanish: 'es',
+  russian: 'ru',
+  portuguese: 'pt',
+  italian: 'it',
+};
+
 const normalizeLanguageCode = (lang: string, fallback: string) => {
-  if (!lang) return fallback;
-  const normalized = String(lang).trim();
-  return normalized || fallback;
+  const fallbackNormalized = String(fallback || 'auto')
+    .trim()
+    .replaceAll('_', '-')
+    .toLowerCase();
+  const raw = String(lang || '').trim();
+  if (!raw) return fallbackNormalized || 'auto';
+
+  const lowered = raw.replaceAll('_', '-').toLowerCase();
+  const aliased = LANGUAGE_ALIAS_MAP[lowered];
+  if (aliased) return aliased;
+
+  if (/^[a-z]{2,3}-[\da-z]{2,8}$/.test(lowered)) {
+    const [base, region] = lowered.split('-');
+    if (base === 'zh') {
+      if (['tw', 'hant', 'hk', 'mo'].includes(region)) {
+        return 'zh-TW';
+      }
+      return 'zh-CN';
+    }
+    return base;
+  }
+
+  if (/^[a-z]{2,3}$/.test(lowered)) {
+    return lowered;
+  }
+
+  return fallbackNormalized || 'auto';
 };
 
 const hasCjk = (value: string) => /[\u3400-\u9FFF]/.test(value);
@@ -88,7 +129,7 @@ const resolveBaiduConfig = (options?: TranslateOptions): BaiduConfig | null => {
 };
 
 const mapGoogleLanguage = (lang: string, isSource: boolean): string => {
-  const normalized = (lang || '').toLowerCase();
+  const normalized = normalizeLanguageCode(lang, isSource ? 'auto' : 'en');
   if (!normalized || normalized === 'auto') {
     return isSource ? 'auto' : 'en';
   }
@@ -110,16 +151,19 @@ const mapGoogleLanguage = (lang: string, isSource: boolean): string => {
     it: 'it',
   };
 
-  return mapping[normalized] || normalized;
+  return mapping[normalized.toLowerCase()] || normalized;
 };
 
 const mapMyMemoryLanguage = (lang: string, isTarget = false) => {
-  if (!lang || lang === 'auto') {
-    return isTarget ? 'en-US' : 'zh-CN';
+  const normalized = normalizeLanguageCode(lang, isTarget ? 'en' : 'auto');
+  if (!normalized || normalized === 'auto') {
+    return isTarget ? 'en-US' : 'auto';
   }
-  const normalized = lang.toLowerCase();
+
   const mappings: Record<string, string> = {
     zh: 'zh-CN',
+    'zh-cn': 'zh-CN',
+    'zh-tw': 'zh-TW',
     en: 'en-US',
     ja: 'ja-JP',
     ko: 'ko-KR',
@@ -130,7 +174,16 @@ const mapMyMemoryLanguage = (lang: string, isTarget = false) => {
     pt: 'pt-PT',
     it: 'it-IT',
   };
-  return mappings[normalized] || lang;
+
+  const mapped = mappings[normalized.toLowerCase()];
+  if (mapped) return mapped;
+
+  const base = normalized.toLowerCase();
+  if (/^[a-z]{2,3}$/.test(base)) {
+    return `${base}-${base.toUpperCase()}`;
+  }
+
+  return normalized;
 };
 
 async function translateViaLibre(
@@ -281,6 +334,7 @@ export async function translateTo(
     fromLanguage: options?.fromLanguage,
     hasBaiduAppId: !!options?.baiduAppId,
     hasBaiduSecretKey: !!options?.baiduSecretKey,
+    hasCacheFilePath: !!options?.cacheFilePath,
   });
 
   const errorText =
@@ -291,16 +345,41 @@ export async function translateTo(
     'auto',
   );
   const toLang = normalizeLanguageCode(translateToLanguage || 'en', 'en');
-  // 引擎名称不需要标准化，直接使用原始值（Baidu, Google, LibreTranslate）
   const engine = String(
     translatorEngine || TRANSLATOR_ENGINE_LIBRETRANSLATE,
   ).trim();
+  const normalizedSourceText = String(text || '')
+    .replaceAll('\r\n', '\n')
+    .trim();
+  const translationCache = options?.cacheFilePath
+    ? getTranslationCache(options.cacheFilePath, options.cacheMaxEntries)
+    : null;
+  const cacheKeyInput = {
+    sourceText: normalizedSourceText,
+    fromLanguage: fromLang,
+    toLanguage: toLang,
+    engine,
+  };
 
   debug('translateTo normalized:', {
     fromLang,
     toLang,
     engine,
+    hasCache: !!translationCache,
   });
+
+  if (translationCache && normalizedSourceText) {
+    const cachedText = translationCache.lookup(cacheKeyInput);
+    if (cachedText !== null) {
+      debug('translateTo cache hit:', {
+        sourceTextLength: normalizedSourceText.length,
+        fromLang,
+        toLang,
+        engine,
+      });
+      return { text: cachedText, error: false };
+    }
+  }
 
   const attempts: { name: string; fn: () => Promise<string> }[] = [];
 
@@ -371,6 +450,9 @@ export async function translateTo(
     try {
       // eslint-disable-next-line no-await-in-loop
       const translatedText = await attempt.fn();
+      if (translationCache && normalizedSourceText) {
+        translationCache.save(cacheKeyInput, translatedText);
+      }
       return { text: translatedText, error: false };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);

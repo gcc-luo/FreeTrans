@@ -23,8 +23,10 @@ const BAIDU_TRANSLATE_API =
 const LANGUAGE_CODE_MAP: Record<string, string> = {
   auto: 'auto',
   zh: 'zh',
-  'zh-CN': 'zh',
-  'zh-TW': 'cht',
+  'zh-cn': 'zh',
+  'zh-hans': 'zh',
+  'zh-tw': 'cht',
+  'zh-hant': 'cht',
   en: 'en',
   ja: 'jp',
   ko: 'kor',
@@ -42,11 +44,36 @@ const LANGUAGE_CODE_MAP: Record<string, string> = {
 };
 
 function mapLanguageCode(lang: string, isTarget = false): string {
-  const normalized = String(lang || '').trim();
+  const normalized = String(lang || '')
+    .trim()
+    .replaceAll('_', '-')
+    .toLowerCase();
   if (!normalized || normalized === 'auto') {
     return isTarget ? 'en' : 'auto';
   }
-  return LANGUAGE_CODE_MAP[normalized] || normalized;
+
+  const mapped = LANGUAGE_CODE_MAP[normalized];
+  if (mapped) return mapped;
+
+  if (normalized.startsWith('zh-')) {
+    if (
+      normalized.includes('tw') ||
+      normalized.includes('hant') ||
+      normalized.includes('hk') ||
+      normalized.includes('mo')
+    ) {
+      return 'cht';
+    }
+    return 'zh';
+  }
+
+  const baseCode = normalized.split('-')[0];
+  const baseMapped = LANGUAGE_CODE_MAP[baseCode];
+  if (baseMapped) return baseMapped;
+
+  // Keep source as auto when detector returns unsupported/low-confidence codes
+  // (e.g. short Latin text misdetected as "hr"), avoiding Baidu param errors.
+  return isTarget ? 'en' : 'auto';
 }
 
 function buildSign(

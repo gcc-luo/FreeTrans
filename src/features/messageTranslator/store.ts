@@ -38,6 +38,11 @@ export default class MessageTranslatorStore extends FeatureStore {
 
   _whatsAppRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  _dynamicPeerLanguageLastApplied = new Map<
+    string,
+    { language: string; at: number }
+  >();
+
   constructor() {
     super();
     makeObservable(this);
@@ -115,6 +120,7 @@ export default class MessageTranslatorStore extends FeatureStore {
       clearTimeout(timer);
     }
     this._whatsAppRetryTimers.clear();
+    this._dynamicPeerLanguageLastApplied.clear();
     this._injectedWhatsAppServices.clear();
     this.isFeatureActive = false;
   }
@@ -156,6 +162,8 @@ export default class MessageTranslatorStore extends FeatureStore {
             targetLanguage: settings.targetLanguage,
             translatorEngine: settings.translatorEngine,
             sendTranslation: settings.sendTranslation,
+            receiveTranslation: settings.receiveTranslation,
+            showOriginalText: settings.showOriginalText,
           },
         },
       );
@@ -167,6 +175,8 @@ export default class MessageTranslatorStore extends FeatureStore {
           targetLanguage: settings.targetLanguage,
           translatorEngine: settings.translatorEngine,
           sendTranslation: settings.sendTranslation,
+          receiveTranslation: settings.receiveTranslation,
+          showOriginalText: settings.showOriginalText,
         },
       });
 
@@ -291,6 +301,8 @@ export default class MessageTranslatorStore extends FeatureStore {
       targetLanguage: actualSettings.targetLanguage,
       translatorEngine: actualSettings.translatorEngine,
       sendTranslation: actualSettings.sendTranslation,
+      receiveTranslation: actualSettings.receiveTranslation,
+      showOriginalText: actualSettings.showOriginalText,
     });
 
     const initialSettingsJson = JSON.stringify({
@@ -299,6 +311,7 @@ export default class MessageTranslatorStore extends FeatureStore {
       translatorEngine: actualSettings.translatorEngine || 'Baidu',
       sendTranslation: actualSettings.sendTranslation !== false,
       receiveTranslation: actualSettings.receiveTranslation !== false,
+      showOriginalText: actualSettings.showOriginalText === true,
     });
 
     const script = `
@@ -320,7 +333,7 @@ export default class MessageTranslatorStore extends FeatureStore {
         if (!ipcRenderer || typeof ipcRenderer.sendToHost !== 'function') {
           return 'no-ipc';
         }
-        const interceptorVersion = '2026-02-14-v11';
+        const interceptorVersion = '2026-02-14-v13';
         if (
           window.__ferdiumTranslatorInterceptorLoaded &&
           window.__ferdiumTranslatorInterceptorVersion === interceptorVersion
@@ -352,6 +365,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             translatorEngine: initialSettings.translatorEngine,
             sendTranslation: initialSettings.sendTranslation,
             receiveTranslation: initialSettings.receiveTranslation,
+            showOriginalText: initialSettings.showOriginalText,
           },
           translating: false,
           bypassSendUntil: 0,
@@ -361,6 +375,12 @@ export default class MessageTranslatorStore extends FeatureStore {
           setSeq: 0,
           activeTranslateOpId: null,
           lastTrigger: null,
+          incomingScanTimer: 0,
+          incomingScanning: false,
+          outgoingHistoryScanTimer: 0,
+          outgoingHistoryScanning: false,
+          outgoingHistoryLookupCache: new Map(),
+          outgoingHistoryLookupPending: new Map(),
         };
         const isActiveInterceptorInstance = () =>
           window.__ferdiumTranslatorInterceptorInstanceId === instanceId;
@@ -402,6 +422,14 @@ export default class MessageTranslatorStore extends FeatureStore {
             } catch (_error) {}
           }
           state.requests.clear();
+          if (state.incomingScanTimer) {
+            clearTimeout(state.incomingScanTimer);
+            state.incomingScanTimer = 0;
+          }
+          if (state.outgoingHistoryScanTimer) {
+            clearTimeout(state.outgoingHistoryScanTimer);
+            state.outgoingHistoryScanTimer = 0;
+          }
 
           while (cleanupTasks.length > 0) {
             const task = cleanupTasks.pop();
@@ -555,6 +583,17 @@ export default class MessageTranslatorStore extends FeatureStore {
         const LOCAL_PREVIEW_TEXT_ATTR = 'data-ferdium-local-preview-text';
         const LOCAL_PREVIEW_OP_ATTR = 'data-ferdium-local-preview-op';
         const LOCAL_PREVIEW_ORIGINAL_ATTR = 'data-ferdium-local-preview-original';
+        const OUTGOING_HISTORY_LOOKUP_PENDING_ATTR =
+          'data-ferdium-local-history-lookup-pending';
+        const INCOMING_PREVIEW_ATTR = 'data-ferdium-incoming-preview';
+        const INCOMING_PREVIEW_TEXT_ATTR = 'data-ferdium-incoming-preview-text';
+        const INCOMING_PREVIEW_SOURCE_ATTR = 'data-ferdium-incoming-source';
+        const INCOMING_PREVIEW_TARGET_LANG_ATTR = 'data-ferdium-incoming-target-lang';
+        const INCOMING_PREVIEW_PENDING_ATTR = 'data-ferdium-incoming-pending';
+        const INCOMING_TRANSLATION_ATTR = 'data-ferdium-incoming-preview-translation';
+        const INCOMING_ORIGINAL_ATTR = 'data-ferdium-incoming-preview-original';
+        const INCOMING_DIVIDER_ATTR = 'data-ferdium-incoming-preview-divider';
+        const INCOMING_MISMATCH_ATTR = 'data-ferdium-incoming-preview-mismatch';
 
         const ensureLocalPreviewStyles = () => {
           if (document.getElementById(LOCAL_PREVIEW_STYLE_ID)) return;
@@ -565,6 +604,10 @@ export default class MessageTranslatorStore extends FeatureStore {
               '.ferdium-translator-local-translation{display:block;white-space:pre-wrap;color:#111827;}',
               '.ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',
               '.ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',
+              '.ferdium-translator-incoming-translation{display:block;white-space:pre-wrap;color:#111827;}',
+              '.ferdium-translator-incoming-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',
+              '.ferdium-translator-incoming-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',
+              '.ferdium-translator-incoming-mismatch{display:block;margin:2px 0 4px;color:#b54708;font-size:11px;line-height:1.25;}',
             ].join('');
             (document.head || document.documentElement || document.body)?.appendChild(
               style,
@@ -615,11 +658,253 @@ export default class MessageTranslatorStore extends FeatureStore {
         const toComparableText = value =>
           normalizeCompareText(value)
             .toLowerCase()
-            .replace(/[^a-z0-9\\u3400-\\u9fff\\s]/gi, '')
+            .replace(/[^\\p{L}\\p{N}\\s]/gu, '')
             .replace(/\\s+/g, ' ')
             .trim();
 
         const hasCjkChars = value => /[\\u3400-\\u9fff]/.test(String(value || ''));
+
+        const normalizeLanguageTag = value => {
+          const normalized = String(value || '')
+            .trim()
+            .replace(/_/g, '-')
+            .toLowerCase();
+          if (!normalized) return '';
+          if (normalized === 'auto') return 'auto';
+          if (normalized.startsWith('zh')) {
+            if (
+              normalized.includes('tw') ||
+              normalized.includes('hant') ||
+              normalized.includes('hk') ||
+              normalized.includes('mo')
+            ) {
+              return 'zh-tw';
+            }
+            return 'zh-cn';
+          }
+          return normalized.split('-')[0] || normalized;
+        };
+
+        const languageTagMatches = (actualLanguage, expectedLanguage) => {
+          const normalizedActual = normalizeLanguageTag(actualLanguage);
+          const normalizedExpected = normalizeLanguageTag(expectedLanguage);
+          if (!normalizedExpected || normalizedExpected === 'auto') return true;
+          if (!normalizedActual || normalizedActual === 'auto') return true;
+          return normalizedActual === normalizedExpected;
+        };
+
+        const SUPPORTED_SETTING_LANGUAGES = new Set([
+          'zh',
+          'en',
+          'ja',
+          'ko',
+          'de',
+          'fr',
+          'es',
+          'ru',
+          'pt',
+          'it',
+        ]);
+
+        const toSettingsLanguageCode = value => {
+          const normalized = normalizeLanguageTag(value);
+          if (!normalized || normalized === 'auto') return '';
+          if (normalized.startsWith('zh')) return 'zh';
+          const base = normalized.split('-')[0] || normalized;
+          return SUPPORTED_SETTING_LANGUAGES.has(base) ? base : '';
+        };
+
+        const inferLanguageFromCharacterSet = value => {
+          const text = String(value || '');
+          if (/[\\u3040-\\u30FF]/.test(text)) return 'ja';
+          if (/[\\uAC00-\\uD7AF]/.test(text)) return 'ko';
+          if (/[\\u0400-\\u04FF]/.test(text)) return 'ru';
+          if (/[\\u3400-\\u9FFF]/.test(text)) return 'zh';
+          return '';
+        };
+
+        const isAmbiguousShortIncomingSample = value => {
+          const sample = normalizeCompareText(value);
+          if (!sample) return false;
+          if (sample.length > 20) return false;
+          const wordCount = sample.split(/\\s+/).filter(Boolean).length;
+          if (wordCount > 4) return false;
+          if (!/^[\\p{L}\\p{N}\\s'".,!?-]+$/u.test(sample)) return false;
+          // Short Latin snippets (e.g. "good", "ok") are often misdetected.
+          return /^[\\p{Script=Latin}\\p{N}\\s'".,!?-]+$/u.test(sample);
+        };
+
+        const getIncomingMessageRows = () => {
+          try {
+            return Array.from(document.querySelectorAll('div.message-in'));
+          } catch (_error) {
+            return [];
+          }
+        };
+
+        const findIncomingMessageTextContainer = row => {
+          if (!(row instanceof Element)) return null;
+          const selectors = [
+            '[data-testid="msg-text"]',
+            'span.selectable-text.copyable-text',
+            'span.copyable-text',
+            'div.copyable-text',
+          ];
+          for (const selector of selectors) {
+            const candidates = Array.from(row.querySelectorAll(selector));
+            for (const candidate of candidates) {
+              if (!(candidate instanceof Element)) continue;
+              const text = String(candidate.innerText || '').trim();
+              if (!text) continue;
+              return candidate;
+            }
+          }
+          return null;
+        };
+
+        const extractIncomingOriginalText = container => {
+          if (!(container instanceof Element)) return '';
+          const decoratedOriginal = container.querySelector(
+            'span[' + INCOMING_ORIGINAL_ATTR + '="1"]',
+          );
+          if (decoratedOriginal instanceof Element) {
+            return normalizeCompareText(
+              decoratedOriginal.innerText || decoratedOriginal.textContent || '',
+            );
+          }
+
+          const clone = container.cloneNode(true);
+          if (!(clone instanceof Element)) {
+            return normalizeCompareText(container.innerText || '');
+          }
+          const cleanupSelectors = [
+            'span[' + INCOMING_TRANSLATION_ATTR + '="1"]',
+            'span[' + INCOMING_DIVIDER_ATTR + '="1"]',
+            'span[' + INCOMING_MISMATCH_ATTR + '="1"]',
+          ];
+          for (const selector of cleanupSelectors) {
+            clone.querySelectorAll(selector).forEach(node => {
+              try {
+                node.remove();
+              } catch (_error) {}
+            });
+          }
+          return normalizeCompareText(clone.innerText || clone.textContent || '');
+        };
+
+        const buildIncomingTranslatePlan = (
+          detectedLanguage,
+          options = {},
+        ) => {
+          const normalizedMyLanguage = normalizeLanguageTag(
+            state.settings.myLanguage || 'zh',
+          );
+          const normalizedConfiguredPeerLanguage = normalizeLanguageTag(
+            state.settings.targetLanguage || 'auto',
+          );
+          const normalizedDetectedLanguage = normalizeLanguageTag(
+            detectedLanguage || '',
+          );
+          const preferAutoSource = !!options.preferAutoSource;
+          const sourceLanguage =
+            normalizedDetectedLanguage && normalizedDetectedLanguage !== 'auto'
+              ? normalizedDetectedLanguage
+              : preferAutoSource
+                ? 'auto'
+              : normalizedConfiguredPeerLanguage &&
+                  normalizedConfiguredPeerLanguage !== 'auto'
+                ? normalizedConfiguredPeerLanguage
+                : 'auto';
+          const languageMismatch =
+            !!normalizedDetectedLanguage &&
+            normalizedDetectedLanguage !== 'auto' &&
+            !!normalizedConfiguredPeerLanguage &&
+            normalizedConfiguredPeerLanguage !== 'auto' &&
+            normalizedDetectedLanguage !== normalizedConfiguredPeerLanguage;
+
+          return {
+            myLanguage: normalizedMyLanguage || 'zh',
+            configuredPeerLanguage: normalizedConfiguredPeerLanguage || 'auto',
+            detectedLanguage: normalizedDetectedLanguage || '',
+            sourceLanguage,
+            languageMismatch,
+            shouldTranslate:
+              !!(normalizedMyLanguage || 'zh') &&
+              sourceLanguage !== (normalizedMyLanguage || 'zh'),
+          };
+        };
+
+        const applyIncomingPreviewDecoration = (
+          textContainer,
+          translatedText,
+          originalText,
+          mismatchDetails = null,
+        ) => {
+          if (!(textContainer instanceof Element)) return false;
+          const normalizedTranslated = String(translatedText || '').trim();
+          const normalizedOriginal = String(originalText || '').trim();
+          if (!normalizedTranslated || !normalizedOriginal) return false;
+
+          ensureLocalPreviewStyles();
+          const translationComparable = toComparableText(normalizedTranslated);
+          const originalComparable = toComparableText(normalizedOriginal);
+          if (
+            !translationComparable ||
+            !originalComparable ||
+            translationComparable === originalComparable
+          ) {
+            return false;
+          }
+
+          const translationBlock = document.createElement('span');
+          translationBlock.setAttribute(INCOMING_TRANSLATION_ATTR, '1');
+          translationBlock.className = 'ferdium-translator-incoming-translation';
+          translationBlock.textContent = normalizedTranslated;
+
+          const dividerBlock = document.createElement('span');
+          dividerBlock.setAttribute(INCOMING_DIVIDER_ATTR, '1');
+          dividerBlock.className = 'ferdium-translator-incoming-divider';
+
+          const originalBlock = document.createElement('span');
+          originalBlock.setAttribute(INCOMING_ORIGINAL_ATTR, '1');
+          originalBlock.className = 'ferdium-translator-incoming-original';
+          originalBlock.textContent = normalizedOriginal;
+
+          let mismatchText = '';
+          if (
+            mismatchDetails &&
+            mismatchDetails.languageMismatch &&
+            mismatchDetails.detectedLanguage &&
+            mismatchDetails.configuredPeerLanguage &&
+            mismatchDetails.configuredPeerLanguage !== 'auto'
+          ) {
+            mismatchText =
+              'Detected ' +
+              String(mismatchDetails.detectedLanguage).toUpperCase() +
+              ', expected ' +
+              String(mismatchDetails.configuredPeerLanguage).toUpperCase() +
+              '. Used detected source.';
+          }
+
+          while (textContainer.firstChild) {
+            textContainer.removeChild(textContainer.firstChild);
+          }
+
+          textContainer.appendChild(translationBlock);
+          if (mismatchText) {
+            const mismatchBlock = document.createElement('span');
+            mismatchBlock.setAttribute(INCOMING_MISMATCH_ATTR, '1');
+            mismatchBlock.className = 'ferdium-translator-incoming-mismatch';
+            mismatchBlock.textContent = mismatchText;
+            textContainer.appendChild(mismatchBlock);
+          }
+          textContainer.appendChild(dividerBlock);
+          textContainer.appendChild(originalBlock);
+          textContainer.setAttribute(INCOMING_PREVIEW_ATTR, '1');
+          textContainer.setAttribute(INCOMING_PREVIEW_TEXT_ATTR, translationComparable);
+
+          return true;
+        };
 
         const appendOriginalPreviewBlock = (
           messageTextContainer,
@@ -751,6 +1036,148 @@ export default class MessageTranslatorStore extends FeatureStore {
               clearTimeout(timer);
             });
           }
+        };
+
+        const lookupOutgoingOriginalFromCache = async (
+          translatedText,
+          reason = 'unknown',
+        ) => {
+          const normalizedTranslated = String(translatedText || '').trim();
+          if (!normalizedTranslated) return '';
+
+          const cacheKey = [
+            toComparableText(normalizedTranslated),
+            normalizeLanguageTag(state.settings.targetLanguage || ''),
+            normalizeLanguageTag(state.settings.myLanguage || ''),
+            String(state.settings.translatorEngine || '').trim().toLowerCase(),
+          ].join('|');
+          if (state.outgoingHistoryLookupCache.has(cacheKey)) {
+            return String(state.outgoingHistoryLookupCache.get(cacheKey) || '');
+          }
+          const pending = state.outgoingHistoryLookupPending.get(cacheKey);
+          if (pending) {
+            return pending;
+          }
+
+          const promise = (async () => {
+            let originalText = '';
+            if (ipcRenderer && typeof ipcRenderer.invoke === 'function') {
+              try {
+                const response = await ipcRenderer.invoke(
+                  'translator:lookup-original',
+                  {
+                    translatedText: normalizedTranslated,
+                    fromLanguage: state.settings.myLanguage || '',
+                    toLanguage: state.settings.targetLanguage || '',
+                    translatorEngine: state.settings.translatorEngine || 'Baidu',
+                    reason,
+                  },
+                );
+                if (response?.found && response?.text) {
+                  originalText = String(response.text || '').trim();
+                }
+              } catch (error) {
+                try {
+                  console.warn(
+                    '[Ferdium Translator] lookup-original invoke failed',
+                    {
+                      reason,
+                      error: String(error?.message || error || ''),
+                    },
+                  );
+                } catch (_e) {}
+              }
+            }
+
+            state.outgoingHistoryLookupCache.set(cacheKey, originalText || '');
+            state.outgoingHistoryLookupPending.delete(cacheKey);
+            return originalText;
+          })();
+
+          state.outgoingHistoryLookupPending.set(cacheKey, promise);
+          return promise;
+        };
+
+        const restoreOutgoingHistoryPreview = async (reason = 'unknown') => {
+          if (!isActiveInterceptorInstance()) return;
+          if (state.outgoingHistoryScanning) return;
+
+          state.outgoingHistoryScanning = true;
+          try {
+            const outgoingRows = getOutgoingMessageRows();
+            const startIndex = Math.max(0, outgoingRows.length - 160);
+            for (
+              let index = startIndex;
+              index < outgoingRows.length;
+              index += 1
+            ) {
+              const row = outgoingRows[index];
+              if (!(row instanceof Element)) continue;
+              if (row.getAttribute(LOCAL_PREVIEW_ATTR) === '1') continue;
+              if (
+                row.getAttribute(OUTGOING_HISTORY_LOOKUP_PENDING_ATTR) === '1'
+              ) {
+                continue;
+              }
+
+              const messageTextContainer = findOutgoingMessageTextContainer(row);
+              if (!messageTextContainer) continue;
+              const translatedText = normalizeCompareText(
+                messageTextContainer.innerText ||
+                  messageTextContainer.textContent ||
+                  '',
+              );
+              if (!translatedText) continue;
+
+              row.setAttribute(OUTGOING_HISTORY_LOOKUP_PENDING_ATTR, '1');
+              try {
+                // eslint-disable-next-line no-await-in-loop
+                const originalText = await lookupOutgoingOriginalFromCache(
+                  translatedText,
+                  reason,
+                );
+                if (!originalText) continue;
+                if (
+                  toComparableText(originalText) === toComparableText(translatedText)
+                ) {
+                  continue;
+                }
+
+                const applied = appendOriginalPreviewBlock(
+                  messageTextContainer,
+                  translatedText,
+                  originalText,
+                  'history-' + reason,
+                );
+                if (!applied) continue;
+
+                row.setAttribute(LOCAL_PREVIEW_ATTR, '1');
+                row.setAttribute(
+                  LOCAL_PREVIEW_TEXT_ATTR,
+                  toComparableText(translatedText),
+                );
+                row.setAttribute(LOCAL_PREVIEW_OP_ATTR, 'history-' + reason);
+              } finally {
+                row.removeAttribute(OUTGOING_HISTORY_LOOKUP_PENDING_ATTR);
+              }
+            }
+          } finally {
+            state.outgoingHistoryScanning = false;
+          }
+        };
+
+        const scheduleOutgoingHistoryScan = (
+          reason = 'unknown',
+          delayMs = 160,
+        ) => {
+          if (!isActiveInterceptorInstance()) return;
+          if (state.outgoingHistoryScanTimer) {
+            clearTimeout(state.outgoingHistoryScanTimer);
+          }
+          state.outgoingHistoryScanTimer = setTimeout(() => {
+            state.outgoingHistoryScanTimer = 0;
+            restoreOutgoingHistoryPreview(reason);
+          }, Math.max(0, Number(delayMs) || 0));
         };
 
         const isTextLooselyMatched = (actual, expected) => {
@@ -1531,7 +1958,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           node.style.display = on ? 'block' : 'none';
         };
 
-        const translateByInvoke = async text => {
+        const translateByInvoke = async (text, options = {}) => {
           console.log('[Ferdium Translator] translateByInvoke called');
           if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') {
             console.warn('[Ferdium Translator] ipcRenderer.invoke not available');
@@ -1540,13 +1967,18 @@ export default class MessageTranslatorStore extends FeatureStore {
 
           const requestParams = {
             text,
-            translateToLanguage: state.settings.targetLanguage || 'en',
-            translatorEngine: state.settings.translatorEngine || 'Baidu',
-            fromLanguage: state.settings.myLanguage || 'auto',
+            translateToLanguage:
+              options.toLang || state.settings.targetLanguage || 'en',
+            translatorEngine:
+              options.translatorEngine || state.settings.translatorEngine || 'Baidu',
+            fromLanguage: options.fromLang || state.settings.myLanguage || 'auto',
           };
           console.log(
             '[Ferdium Translator] Invoking translate with params:',
-            JSON.stringify(requestParams),
+            JSON.stringify({
+              ...requestParams,
+              reason: options.reason || 'unspecified',
+            }),
           );
 
           const response = await ipcRenderer.invoke('translate', requestParams);
@@ -1575,7 +2007,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           return translatedText;
         };
 
-        const translateByHostMessage = text =>
+        const translateByHostMessage = (text, options = {}) =>
           new Promise((resolve, reject) => {
             const requestId = ++state.requestId;
             const timeout = setTimeout(() => {
@@ -1583,32 +2015,41 @@ export default class MessageTranslatorStore extends FeatureStore {
               reject(new Error('timeout'));
             }, 12000);
             state.requests.set(requestId, { resolve, reject, timeout });
+
+            const fromLang = options.fromLang || state.settings.myLanguage || 'auto';
+            const toLang = options.toLang || state.settings.targetLanguage || 'en';
+            const translatorEngine =
+              options.translatorEngine || state.settings.translatorEngine || 'Baidu';
             
             // 娣诲姞璋冭瘯鏃ュ織
             try {
               console.debug('[Ferdium Translator] Sending translation request', {
                 requestId,
                 text: text.substring(0, 50),
-                fromLang: state.settings.myLanguage || 'auto',
-                toLang: state.settings.targetLanguage || 'en',
-                translatorEngine: state.settings.translatorEngine || 'Baidu',
+                fromLang,
+                toLang,
+                translatorEngine,
+                reason: options.reason || 'unspecified',
               });
             } catch (_debugError) {}
             
             ipcRenderer.sendToHost('translator:translate-message', {
               requestId,
               text,
-              fromLang: state.settings.myLanguage || 'auto',
-              toLang: state.settings.targetLanguage || 'en',
-              translatorEngine: state.settings.translatorEngine || 'Baidu',
+              fromLang,
+              toLang,
+              translatorEngine,
             });
           });
 
-        const translate = async text => {
-          console.log('[Ferdium Translator] translate() called with text:', text.substring(0, 50));
+        const translate = async (text, options = {}) => {
+          console.log(
+            '[Ferdium Translator] translate() called with text:',
+            text.substring(0, 50),
+          );
           try {
             console.log('[Ferdium Translator] Trying translateByInvoke');
-            const result = await translateByInvoke(text);
+            const result = await translateByInvoke(text, options);
             console.log('[Ferdium Translator] translateByInvoke succeeded:', result.substring(0, 50));
             return result;
           } catch (invokeError) {
@@ -1617,10 +2058,491 @@ export default class MessageTranslatorStore extends FeatureStore {
               invokeError,
             );
             console.log('[Ferdium Translator] Trying translateByHostMessage');
-            const result = await translateByHostMessage(text);
+            const result = await translateByHostMessage(text, options);
             console.log('[Ferdium Translator] translateByHostMessage succeeded:', result.substring(0, 50));
             return result;
           }
+        };
+
+        const detectLanguage = async sample => {
+          if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') {
+            return '';
+          }
+          const normalizedSample = String(sample || '').trim();
+          if (normalizedSample.length < 3) {
+            return '';
+          }
+          try {
+            const detected = await ipcRenderer.invoke('detect-language', {
+              sample: normalizedSample.slice(0, 1200),
+            });
+            return normalizeLanguageTag(detected || '');
+          } catch (error) {
+            try {
+              console.warn('[Ferdium Translator] detect-language failed', {
+                error: String(error?.message || error || ''),
+              });
+            } catch (_e) {}
+            return '';
+          }
+        };
+
+        const validateTranslatedLanguage = async (
+          translatedText,
+          expectedLanguage,
+          validationContext = 'unknown',
+        ) => {
+          const normalizedExpected = normalizeLanguageTag(expectedLanguage || '');
+          const normalizedText = String(translatedText || '').trim();
+          if (!normalizedExpected || normalizedExpected === 'auto') {
+            return { match: true, detectedLanguage: '' };
+          }
+          if (normalizedText.length < 8) {
+            return { match: true, detectedLanguage: '' };
+          }
+          const detectedLanguage = await detectLanguage(normalizedText);
+          const match = languageTagMatches(detectedLanguage, normalizedExpected);
+          try {
+            console.log(
+              '[Ferdium Translator] Translation language validation:',
+              JSON.stringify({
+                context: validationContext,
+                expectedLanguage: normalizedExpected,
+                detectedLanguage,
+                match,
+                textPreview: normalizedText.substring(0, 60),
+              }),
+            );
+          } catch (_e) {}
+          return { match, detectedLanguage };
+        };
+
+        const processIncomingMessageRow = async (row, reason = 'unknown') => {
+          if (!isActiveInterceptorInstance()) return;
+          if (!state.settings.receiveTranslation) return;
+          if (!(row instanceof Element)) return;
+          const textContainer = findIncomingMessageTextContainer(row);
+          if (!(textContainer instanceof Element)) return;
+
+          const originalText = extractIncomingOriginalText(textContainer);
+          const originalComparable = toComparableText(originalText);
+          if (!originalText || !originalComparable) return;
+
+          const targetLanguage = normalizeLanguageTag(
+            state.settings.myLanguage || 'zh',
+          );
+          const previousSourceComparable =
+            row.getAttribute(INCOMING_PREVIEW_SOURCE_ATTR) || '';
+          const previousTargetLanguage = normalizeLanguageTag(
+            row.getAttribute(INCOMING_PREVIEW_TARGET_LANG_ATTR) || '',
+          );
+
+          if (
+            previousSourceComparable === originalComparable &&
+            previousTargetLanguage === targetLanguage
+          ) {
+            return;
+          }
+          if (row.getAttribute(INCOMING_PREVIEW_PENDING_ATTR) === '1') {
+            return;
+          }
+
+          row.setAttribute(INCOMING_PREVIEW_PENDING_ATTR, '1');
+          try {
+            const detectedLanguage = await detectLanguage(originalText);
+            const inferredLanguage = inferLanguageFromCharacterSet(originalText);
+            const effectiveDetectedLanguage = inferredLanguage || detectedLanguage;
+            const lowConfidenceIncomingDetection =
+              !inferredLanguage &&
+              isAmbiguousShortIncomingSample(originalText);
+            if (
+              inferredLanguage &&
+              detectedLanguage &&
+              normalizeLanguageTag(inferredLanguage) !==
+                normalizeLanguageTag(detectedLanguage)
+            ) {
+              try {
+                console.log(
+                  '[Ferdium Translator] Incoming language adjusted by character-set heuristic',
+                  {
+                    detectedLanguage,
+                    inferredLanguage,
+                    effectiveDetectedLanguage,
+                    samplePreview: originalText.substring(0, 80),
+                  },
+                );
+              } catch (_e) {}
+            }
+            if (
+              lowConfidenceIncomingDetection &&
+              effectiveDetectedLanguage &&
+              normalizeLanguageTag(effectiveDetectedLanguage) !== 'auto'
+            ) {
+              try {
+                console.log(
+                  '[Ferdium Translator] Incoming language detection marked low confidence, fallback to auto source',
+                  {
+                    detectedLanguage,
+                    inferredLanguage,
+                    effectiveDetectedLanguage,
+                    samplePreview: originalText.substring(0, 80),
+                    sampleLength: originalText.length,
+                  },
+                );
+              } catch (_e) {}
+            }
+            const planDetectedLanguage = lowConfidenceIncomingDetection
+              ? ''
+              : effectiveDetectedLanguage;
+
+            const detectedPeerLanguage = toSettingsLanguageCode(
+              planDetectedLanguage,
+            );
+            const configuredPeerLanguage = toSettingsLanguageCode(
+              state.settings.targetLanguage || '',
+            );
+            const myLanguage = toSettingsLanguageCode(
+              state.settings.myLanguage || 'zh',
+            );
+            if (
+              !lowConfidenceIncomingDetection &&
+              detectedPeerLanguage &&
+              detectedPeerLanguage !== configuredPeerLanguage &&
+              detectedPeerLanguage !== myLanguage
+            ) {
+              state.settings.targetLanguage = detectedPeerLanguage;
+              ipcRenderer.sendToHost('translator:incoming-language-detected', {
+                detectedLanguage: detectedPeerLanguage,
+                rawDetectedLanguage: detectedLanguage || '',
+                inferredLanguage: inferredLanguage || '',
+                sample: originalText.slice(0, 160),
+                sampleLength: originalText.length,
+                reason,
+              });
+              try {
+                console.log(
+                  '[Ferdium Translator] Reported incoming detected language',
+                  {
+                    reason,
+                    detectedLanguage: detectedPeerLanguage,
+                    rawDetectedLanguage: detectedLanguage,
+                    inferredLanguage,
+                    previousConfiguredPeerLanguage: configuredPeerLanguage,
+                  },
+                );
+              } catch (_e) {}
+            }
+            const translatePlan = buildIncomingTranslatePlan(
+              planDetectedLanguage,
+              {
+                preferAutoSource: lowConfidenceIncomingDetection,
+              },
+            );
+            if (!translatePlan.shouldTranslate) {
+              row.setAttribute(INCOMING_PREVIEW_SOURCE_ATTR, originalComparable);
+              row.setAttribute(
+                INCOMING_PREVIEW_TARGET_LANG_ATTR,
+                translatePlan.myLanguage,
+              );
+              return;
+            }
+
+            let translatedText = await translate(originalText, {
+              fromLang: translatePlan.sourceLanguage,
+              toLang: translatePlan.myLanguage,
+              reason: 'incoming:' + reason,
+            });
+
+            translatedText = String(translatedText || '').trim();
+            if (
+              !translatedText ||
+              toComparableText(translatedText) === originalComparable
+            ) {
+              return;
+            }
+
+            let validation = await validateTranslatedLanguage(
+              translatedText,
+              translatePlan.myLanguage,
+              'incoming-first',
+            );
+
+            if (!validation.match) {
+              const fallbackSource =
+                translatePlan.configuredPeerLanguage &&
+                translatePlan.configuredPeerLanguage !== 'auto'
+                  ? translatePlan.configuredPeerLanguage
+                  : 'auto';
+              if (fallbackSource !== translatePlan.sourceLanguage) {
+                const retryTranslatedText = String(
+                  await translate(originalText, {
+                    fromLang: fallbackSource,
+                    toLang: translatePlan.myLanguage,
+                    reason: 'incoming-language-retry',
+                  }),
+                ).trim();
+                if (
+                  retryTranslatedText &&
+                  toComparableText(retryTranslatedText) !== originalComparable
+                ) {
+                  const retryValidation = await validateTranslatedLanguage(
+                    retryTranslatedText,
+                    translatePlan.myLanguage,
+                    'incoming-retry',
+                  );
+                  if (retryValidation.match) {
+                    translatedText = retryTranslatedText;
+                    validation = retryValidation;
+                  }
+                }
+              }
+            }
+
+            if (!validation.match) {
+              try {
+                console.warn(
+                  '[Ferdium Translator] Incoming translation rejected by language validation',
+                  {
+                    reason,
+                    sourceLanguage: translatePlan.sourceLanguage,
+                    configuredPeerLanguage: translatePlan.configuredPeerLanguage,
+                    targetLanguage: translatePlan.myLanguage,
+                    detectedSourceLanguage: translatePlan.detectedLanguage,
+                    detectedTranslatedLanguage: validation.detectedLanguage,
+                  },
+                );
+              } catch (_e) {}
+              return;
+            }
+
+            const applied = applyIncomingPreviewDecoration(
+              textContainer,
+              translatedText,
+              originalText,
+              translatePlan,
+            );
+            if (!applied) {
+              return;
+            }
+
+            row.setAttribute(INCOMING_PREVIEW_ATTR, '1');
+            row.setAttribute(
+              INCOMING_PREVIEW_TEXT_ATTR,
+              toComparableText(translatedText),
+            );
+            row.setAttribute(INCOMING_PREVIEW_SOURCE_ATTR, originalComparable);
+            row.setAttribute(
+              INCOMING_PREVIEW_TARGET_LANG_ATTR,
+              translatePlan.myLanguage,
+            );
+
+            try {
+              console.log('[Ferdium Translator] Incoming translation applied', {
+                reason,
+                sourceLanguage: translatePlan.sourceLanguage,
+                configuredPeerLanguage: translatePlan.configuredPeerLanguage,
+                detectedSourceLanguage: translatePlan.detectedLanguage,
+                languageMismatch: translatePlan.languageMismatch,
+                originalPreview: originalText.substring(0, 80),
+                translatedPreview: translatedText.substring(0, 80),
+              });
+            } catch (_e) {}
+          } catch (error) {
+            try {
+              console.warn('[Ferdium Translator] Incoming translation failed', {
+                reason,
+                message: String(error?.message || error || ''),
+              });
+            } catch (_e) {}
+          } finally {
+            row.removeAttribute(INCOMING_PREVIEW_PENDING_ATTR);
+          }
+        };
+
+        const scanIncomingMessages = async (reason = 'unknown') => {
+          if (!isActiveInterceptorInstance()) return;
+          if (!state.settings.receiveTranslation) return;
+          if (state.incomingScanning) return;
+
+          state.incomingScanning = true;
+          try {
+            const rows = getIncomingMessageRows();
+            const startIndex = Math.max(0, rows.length - 20);
+            for (let index = startIndex; index < rows.length; index += 1) {
+              // eslint-disable-next-line no-await-in-loop
+              await processIncomingMessageRow(rows[index], reason);
+            }
+          } finally {
+            state.incomingScanning = false;
+          }
+        };
+
+        const scheduleIncomingScan = (reason = 'unknown', delayMs = 120) => {
+          if (!isActiveInterceptorInstance()) return;
+          if (!state.settings.receiveTranslation) return;
+          if (state.incomingScanTimer) {
+            clearTimeout(state.incomingScanTimer);
+          }
+          state.incomingScanTimer = setTimeout(() => {
+            state.incomingScanTimer = 0;
+            scanIncomingMessages(reason);
+          }, Math.max(0, Number(delayMs) || 0));
+        };
+
+        let incomingObserver = null;
+        const ensureIncomingObserver = () => {
+          if (!isActiveInterceptorInstance()) return;
+          if (incomingObserver) return;
+          if (typeof MutationObserver === 'undefined') return;
+
+          const attachObserver = () => {
+            if (!isActiveInterceptorInstance()) return false;
+            const rootNode = document.body || document.documentElement;
+            if (!(rootNode instanceof Element)) return false;
+
+            incomingObserver = new MutationObserver(mutations => {
+              if (!isActiveInterceptorInstance()) return;
+              if (!state.settings.receiveTranslation) return;
+
+              let shouldScan = false;
+              for (const mutation of mutations) {
+                if (mutation.type === 'characterData') {
+                  const hostElement = mutation.target?.parentElement;
+                  if (hostElement?.closest?.('div.message-in')) {
+                    shouldScan = true;
+                    break;
+                  }
+                }
+                if (mutation.target instanceof Element) {
+                  if (mutation.target.closest('div.message-in')) {
+                    shouldScan = true;
+                    break;
+                  }
+                }
+                for (const node of Array.from(mutation.addedNodes || [])) {
+                  if (!(node instanceof Element)) continue;
+                  if (
+                    node.matches('div.message-in') ||
+                    node.closest('div.message-in') ||
+                    node.querySelector('div.message-in')
+                  ) {
+                    shouldScan = true;
+                    break;
+                  }
+                }
+                if (shouldScan) break;
+              }
+
+              if (shouldScan) {
+                scheduleIncomingScan('mutation-observer', 120);
+              }
+            });
+            incomingObserver.observe(rootNode, {
+              childList: true,
+              subtree: true,
+              characterData: true,
+            });
+            registerCleanup(() => {
+              try {
+                incomingObserver?.disconnect();
+              } catch (_error) {}
+              incomingObserver = null;
+            });
+            return true;
+          };
+
+          if (attachObserver()) {
+            scheduleIncomingScan('incoming-observer-ready', 260);
+            return;
+          }
+
+          const retryTimer = setTimeout(() => {
+            if (!isActiveInterceptorInstance()) return;
+            if (attachObserver()) {
+              scheduleIncomingScan('incoming-observer-retry', 300);
+            }
+          }, 650);
+          registerCleanup(() => {
+            clearTimeout(retryTimer);
+          });
+        };
+
+        let outgoingHistoryObserver = null;
+        const ensureOutgoingHistoryObserver = () => {
+          if (!isActiveInterceptorInstance()) return;
+          if (outgoingHistoryObserver) return;
+          if (typeof MutationObserver === 'undefined') return;
+
+          const attachObserver = () => {
+            if (!isActiveInterceptorInstance()) return false;
+            const rootNode = document.body || document.documentElement;
+            if (!(rootNode instanceof Element)) return false;
+
+            outgoingHistoryObserver = new MutationObserver(mutations => {
+              if (!isActiveInterceptorInstance()) return;
+              let shouldScan = false;
+
+              for (const mutation of mutations) {
+                if (mutation.type === 'characterData') {
+                  const hostElement = mutation.target?.parentElement;
+                  if (hostElement?.closest?.('div.message-out')) {
+                    shouldScan = true;
+                    break;
+                  }
+                }
+                if (
+                  mutation.target instanceof Element &&
+                  mutation.target.closest('div.message-out')
+                ) {
+                  shouldScan = true;
+                  break;
+                }
+                for (const node of Array.from(mutation.addedNodes || [])) {
+                  if (!(node instanceof Element)) continue;
+                  if (
+                    node.matches('div.message-out') ||
+                    node.closest('div.message-out') ||
+                    node.querySelector('div.message-out')
+                  ) {
+                    shouldScan = true;
+                    break;
+                  }
+                }
+                if (shouldScan) break;
+              }
+
+              if (shouldScan) {
+                scheduleOutgoingHistoryScan('outgoing-history-observer', 160);
+              }
+            });
+            outgoingHistoryObserver.observe(rootNode, {
+              childList: true,
+              subtree: true,
+              characterData: true,
+            });
+            registerCleanup(() => {
+              try {
+                outgoingHistoryObserver?.disconnect();
+              } catch (_error) {}
+              outgoingHistoryObserver = null;
+            });
+            return true;
+          };
+
+          if (attachObserver()) {
+            scheduleOutgoingHistoryScan('outgoing-history-observer-ready', 260);
+            return;
+          }
+
+          const retryTimer = setTimeout(() => {
+            if (!isActiveInterceptorInstance()) return;
+            if (attachObserver()) {
+              scheduleOutgoingHistoryScan('outgoing-history-observer-retry', 300);
+            }
+          }, 650);
+          registerCleanup(() => {
+            clearTimeout(retryTimer);
+          });
         };
 
         const handleTranslationResult = (_event, result = {}) => {
@@ -1888,8 +2810,46 @@ export default class MessageTranslatorStore extends FeatureStore {
               }),
             );
 
-            const translated = await translate(original);
-            const finalText = (translated || original).trim() || original;
+            const detectedOutgoingSource = await detectLanguage(original);
+            const configuredSourceLanguage = normalizeLanguageTag(
+              state.settings.myLanguage || 'auto',
+            );
+            const preferredSourceLanguage =
+              detectedOutgoingSource &&
+              detectedOutgoingSource !== 'auto' &&
+              detectedOutgoingSource !== configuredSourceLanguage
+                ? detectedOutgoingSource
+                : state.settings.myLanguage || 'auto';
+
+            let translated = await translate(original, {
+              fromLang: preferredSourceLanguage,
+              toLang: state.settings.targetLanguage || 'en',
+              reason: 'outgoing-first',
+            });
+            let finalText = (translated || original).trim() || original;
+
+            let outgoingValidation = await validateTranslatedLanguage(
+              finalText,
+              state.settings.targetLanguage || 'en',
+              'outgoing-first',
+            );
+            if (!outgoingValidation.match) {
+              const retrySourceLanguage =
+                preferredSourceLanguage === 'auto'
+                  ? state.settings.myLanguage || 'auto'
+                  : 'auto';
+              translated = await translate(original, {
+                fromLang: retrySourceLanguage,
+                toLang: state.settings.targetLanguage || 'en',
+                reason: 'outgoing-language-retry',
+              });
+              finalText = (translated || original).trim() || original;
+              outgoingValidation = await validateTranslatedLanguage(
+                finalText,
+                state.settings.targetLanguage || 'en',
+                'outgoing-retry',
+              );
+            }
 
             console.log(
               '[Ferdium Translator] Translation result:',
@@ -1900,6 +2860,9 @@ export default class MessageTranslatorStore extends FeatureStore {
                 translated: finalText.substring(0, 100),
                 success: finalText !== original,
                 translatedLength: finalText.length,
+                detectedOutgoingSource,
+                preferredSourceLanguage,
+                outgoingValidation,
               }),
             );
             console.log('[Ferdium Translator] Setting composer text to:', finalText.substring(0, 100));
@@ -2132,6 +3095,21 @@ export default class MessageTranslatorStore extends FeatureStore {
         addDomListener(document, 'pointerdown', handleSendButtonEvent, true);
         addDomListener(document, 'mousedown', handleSendButtonEvent, true);
         addDomListener(document, 'click', handleSendButtonEvent, true);
+        ensureIncomingObserver();
+        ensureOutgoingHistoryObserver();
+        scheduleIncomingScan('bootstrap', 380);
+        scheduleOutgoingHistoryScan('bootstrap', 420);
+        addDomListener(
+          document,
+          'visibilitychange',
+          () => {
+            if (document.visibilityState === 'visible') {
+              scheduleIncomingScan('visibility-change', 160);
+              scheduleOutgoingHistoryScan('visibility-change', 220);
+            }
+          },
+          true,
+        );
 
         const handleTranslatorConfigure = (_event, settings) => {
           if (!isActiveInterceptorInstance()) return;
@@ -2147,10 +3125,22 @@ export default class MessageTranslatorStore extends FeatureStore {
             if (state.settings.sendTranslation === undefined) {
               state.settings.sendTranslation = true;
             }
+            if (state.settings.receiveTranslation === undefined) {
+              state.settings.receiveTranslation = true;
+            }
+            if (state.settings.showOriginalText === undefined) {
+              state.settings.showOriginalText = false;
+            }
             console.log('[Ferdium Translator] Settings updated:', {
               old: oldSettings,
               new: state.settings,
             });
+            if (state.settings.receiveTranslation) {
+              ensureIncomingObserver();
+              scheduleIncomingScan('configure-update', 200);
+            }
+            ensureOutgoingHistoryObserver();
+            scheduleOutgoingHistoryScan('configure-update', 260);
           }
         };
         addIpcListener('translator:configure', handleTranslatorConfigure);
@@ -2200,6 +3190,9 @@ export default class MessageTranslatorStore extends FeatureStore {
             translating: state.translating,
             activeTranslateOpId: state.activeTranslateOpId,
             bypassSendUntil: state.bypassSendUntil,
+            incomingScanning: state.incomingScanning,
+            incomingScanTimer: state.incomingScanTimer,
+            receiveTranslation: state.settings.receiveTranslation,
           });
           window.__ferdiumTranslatorRunCase = async targetText => {
             if (!isActiveInterceptorInstance()) {
@@ -2335,6 +3328,124 @@ export default class MessageTranslatorStore extends FeatureStore {
     });
   };
 
+  _normalizeDynamicLanguageCode = (value: unknown): string => {
+    const normalized = String(value || '')
+      .trim()
+      .replaceAll('_', '-')
+      .toLowerCase();
+    if (!normalized) return '';
+    if (normalized === 'auto') return 'auto';
+    if (normalized.startsWith('zh')) return 'zh';
+    return normalized.split('-')[0] || normalized;
+  };
+
+  _toSupportedPeerLanguage = (value: unknown): string => {
+    const normalized = this._normalizeDynamicLanguageCode(value);
+    if (!normalized || normalized === 'auto') return '';
+    const supported = new Set([
+      'zh',
+      'en',
+      'ja',
+      'ko',
+      'de',
+      'fr',
+      'es',
+      'ru',
+      'pt',
+      'it',
+    ]);
+    return supported.has(normalized) ? normalized : '';
+  };
+
+  _inferLanguageFromSampleText = (sample: string): string => {
+    const text = String(sample || '');
+    if (/[\u3040-\u30FF]/.test(text)) return 'ja';
+    if (/[\uAC00-\uD7AF]/.test(text)) return 'ko';
+    if (/[\u0400-\u04FF]/.test(text)) return 'ru';
+    if (/[\u3400-\u9FFF]/.test(text)) return 'zh';
+    return '';
+  };
+
+  @action _handleIncomingLanguageDetected = ({
+    serviceId,
+    detectedLanguage,
+    sample,
+    sampleLength,
+    reason,
+  }: {
+    serviceId: string;
+    detectedLanguage: string;
+    sample?: string;
+    sampleLength?: number;
+    reason?: string;
+  }) => {
+    if (!String(serviceId || '').trim()) return;
+    const sampleText = String(sample || '').trim();
+    const sampleSize = Number(sampleLength ?? sampleText.length);
+    if (sampleSize < 4) return;
+
+    const serviceSettings = this.getServiceSettings(serviceId);
+    if (serviceSettings.receiveTranslation === false) return;
+
+    const inferredLanguage = this._inferLanguageFromSampleText(sampleText);
+    const detectedPeerLanguage =
+      this._toSupportedPeerLanguage(detectedLanguage);
+    let shouldPreferInferredLanguage = false;
+    if (
+      inferredLanguage &&
+      detectedPeerLanguage &&
+      inferredLanguage !== detectedPeerLanguage &&
+      sampleSize <= 24
+    ) {
+      shouldPreferInferredLanguage = true;
+    }
+    let nextPeerLanguage = detectedPeerLanguage || inferredLanguage;
+    if (shouldPreferInferredLanguage) {
+      nextPeerLanguage = inferredLanguage;
+    }
+    if (!nextPeerLanguage) return;
+
+    const myLanguage = this._toSupportedPeerLanguage(
+      serviceSettings.myLanguage,
+    );
+    if (myLanguage && nextPeerLanguage === myLanguage) return;
+
+    const currentPeerLanguage = this._toSupportedPeerLanguage(
+      serviceSettings.targetLanguage,
+    );
+    if (currentPeerLanguage === nextPeerLanguage) return;
+
+    const previousApplied = this._dynamicPeerLanguageLastApplied.get(serviceId);
+    if (
+      previousApplied &&
+      previousApplied.language === nextPeerLanguage &&
+      Date.now() - previousApplied.at < 500
+    ) {
+      return;
+    }
+
+    debug('Applying dynamic peer language from incoming message', {
+      serviceId,
+      reason,
+      samplePreview: sampleText.slice(0, 60),
+      detectedLanguage,
+      nextPeerLanguage,
+      previousPeerLanguage: serviceSettings.targetLanguage,
+      myLanguage: serviceSettings.myLanguage,
+    });
+
+    this._dynamicPeerLanguageLastApplied.set(serviceId, {
+      language: nextPeerLanguage,
+      at: Date.now(),
+    });
+    this._updateServiceSettings({
+      serviceId,
+      settings: {
+        targetLanguage: nextPeerLanguage,
+      },
+    });
+  };
+
   @action _handleHostMessage = (message: { action: string; data: any }) => {
     debug('_handleHostMessage', message);
   };
@@ -2364,6 +3475,20 @@ export default class MessageTranslatorStore extends FeatureStore {
       message.data?.serviceId
     ) {
       this._pushSettingsToService(message.data.serviceId);
+    }
+
+    if (
+      message.action === 'translator:incoming-language-detected' &&
+      message.data?.serviceId &&
+      message.data?.detectedLanguage
+    ) {
+      this._handleIncomingLanguageDetected({
+        serviceId: message.data.serviceId,
+        detectedLanguage: message.data.detectedLanguage,
+        sample: message.data.sample,
+        sampleLength: message.data.sampleLength,
+        reason: message.data.reason,
+      });
     }
   };
 
