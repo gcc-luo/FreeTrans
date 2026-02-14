@@ -320,7 +320,7 @@ export default class MessageTranslatorStore extends FeatureStore {
         if (!ipcRenderer || typeof ipcRenderer.sendToHost !== 'function') {
           return 'no-ipc';
         }
-        const interceptorVersion = '2026-02-14-v10';
+        const interceptorVersion = '2026-02-14-v11';
         if (
           window.__ferdiumTranslatorInterceptorLoaded &&
           window.__ferdiumTranslatorInterceptorVersion === interceptorVersion
@@ -550,6 +550,61 @@ export default class MessageTranslatorStore extends FeatureStore {
           };
         };
 
+        const LOCAL_PREVIEW_STYLE_ID = 'ferdium-translator-local-preview-style';
+        const LOCAL_PREVIEW_ATTR = 'data-ferdium-local-preview';
+        const LOCAL_PREVIEW_TEXT_ATTR = 'data-ferdium-local-preview-text';
+        const LOCAL_PREVIEW_OP_ATTR = 'data-ferdium-local-preview-op';
+        const LOCAL_PREVIEW_ORIGINAL_ATTR = 'data-ferdium-local-preview-original';
+
+        const ensureLocalPreviewStyles = () => {
+          if (document.getElementById(LOCAL_PREVIEW_STYLE_ID)) return;
+          try {
+            const style = document.createElement('style');
+            style.id = LOCAL_PREVIEW_STYLE_ID;
+            style.textContent = [
+              '.ferdium-translator-local-translation{display:block;white-space:pre-wrap;color:#111827;}',
+              '.ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',
+              '.ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',
+            ].join('');
+            (document.head || document.documentElement || document.body)?.appendChild(
+              style,
+            );
+            registerCleanup(() => {
+              try {
+                style.remove();
+              } catch (_error) {}
+            });
+          } catch (_error) {}
+        };
+
+        const getOutgoingMessageRows = () => {
+          try {
+            return Array.from(document.querySelectorAll('div.message-out'));
+          } catch (_error) {
+            return [];
+          }
+        };
+
+        const findOutgoingMessageTextContainer = row => {
+          if (!(row instanceof Element)) return null;
+          const selectors = [
+            '[data-testid="msg-text"]',
+            'span.selectable-text.copyable-text',
+            'span.copyable-text',
+            'div.copyable-text',
+          ];
+          for (const selector of selectors) {
+            const candidates = Array.from(row.querySelectorAll(selector));
+            for (const candidate of candidates) {
+              if (!(candidate instanceof Element)) continue;
+              const text = String(candidate.innerText || '').trim();
+              if (!text) continue;
+              return candidate;
+            }
+          }
+          return null;
+        };
+
         const normalizeCompareText = value =>
           String(value || '')
             .trim()
@@ -565,6 +620,138 @@ export default class MessageTranslatorStore extends FeatureStore {
             .trim();
 
         const hasCjkChars = value => /[\\u3400-\\u9fff]/.test(String(value || ''));
+
+        const appendOriginalPreviewBlock = (
+          messageTextContainer,
+          translatedText,
+          originalText,
+          operationId,
+        ) => {
+          if (!(messageTextContainer instanceof Element)) return false;
+          const normalizedTranslated = String(translatedText || '').trim();
+          const normalizedOriginal = String(originalText || '').trim();
+          if (!normalizedTranslated || !normalizedOriginal) return false;
+
+          messageTextContainer.classList.add('ferdium-translator-local-translation');
+          messageTextContainer.setAttribute(LOCAL_PREVIEW_ATTR, '1');
+          messageTextContainer.setAttribute(
+            LOCAL_PREVIEW_TEXT_ATTR,
+            toComparableText(normalizedTranslated),
+          );
+          messageTextContainer.setAttribute(LOCAL_PREVIEW_OP_ATTR, String(operationId || ''));
+
+          let divider = messageTextContainer.querySelector(
+            '[data-ferdium-local-preview-divider="1"]',
+          );
+          if (!(divider instanceof Element)) {
+            divider = document.createElement('span');
+            divider.setAttribute('data-ferdium-local-preview-divider', '1');
+            divider.className = 'ferdium-translator-local-divider';
+          }
+
+          let originalBlock = messageTextContainer.querySelector(
+            'span[' + LOCAL_PREVIEW_ORIGINAL_ATTR + '="1"]',
+          );
+          if (!(originalBlock instanceof Element)) {
+            originalBlock = document.createElement('span');
+            originalBlock.setAttribute(LOCAL_PREVIEW_ORIGINAL_ATTR, '1');
+            originalBlock.className = 'ferdium-translator-local-original';
+          }
+          originalBlock.textContent = normalizedOriginal;
+
+          if (!divider.isConnected) {
+            messageTextContainer.appendChild(divider);
+          }
+          if (!originalBlock.isConnected) {
+            messageTextContainer.appendChild(originalBlock);
+          }
+          return true;
+        };
+
+        const decorateLatestOutgoingMessage = (
+          translatedText,
+          originalText,
+          operationId,
+          minimumRowIndex = 0,
+        ) => {
+          const comparableTranslated = toComparableText(translatedText);
+          const comparableOriginal = toComparableText(originalText);
+          if (!comparableTranslated || !comparableOriginal) {
+            return false;
+          }
+          ensureLocalPreviewStyles();
+          const outgoingRows = getOutgoingMessageRows();
+          const startIndex = Math.max(0, Number(minimumRowIndex) || 0);
+          for (let index = outgoingRows.length - 1; index >= startIndex; index -= 1) {
+            const row = outgoingRows[index];
+            if (!(row instanceof Element)) continue;
+            const rowComparable = toComparableText(String(row.innerText || ''));
+            if (!rowComparable || !rowComparable.includes(comparableTranslated)) {
+              continue;
+            }
+            const messageTextContainer = findOutgoingMessageTextContainer(row);
+            if (!messageTextContainer) {
+              continue;
+            }
+            const applied = appendOriginalPreviewBlock(
+              messageTextContainer,
+              translatedText,
+              originalText,
+              operationId,
+            );
+            if (!applied) {
+              continue;
+            }
+            row.setAttribute(LOCAL_PREVIEW_ATTR, '1');
+            row.setAttribute(LOCAL_PREVIEW_TEXT_ATTR, comparableTranslated);
+            row.setAttribute(LOCAL_PREVIEW_OP_ATTR, String(operationId || ''));
+            try {
+              console.log('[Ferdium Translator] Local preview decorated', {
+                operationId,
+                translatedPreview: String(translatedText || '').substring(0, 80),
+                originalPreview: String(originalText || '').substring(0, 80),
+              });
+            } catch (_e) {}
+            return true;
+          }
+          return false;
+        };
+
+        const queueLocalPreviewDecoration = (
+          translatedText,
+          originalText,
+          operationId,
+          minimumRowIndex = 0,
+        ) => {
+          const normalizedTranslated = String(translatedText || '').trim();
+          const normalizedOriginal = String(originalText || '').trim();
+          if (!normalizedTranslated || !normalizedOriginal) return;
+          if (toComparableText(normalizedTranslated) === toComparableText(normalizedOriginal)) {
+            return;
+          }
+          const attemptDelays = [80, 220, 460, 900, 1500];
+          for (const delayMs of attemptDelays) {
+            const timer = setTimeout(() => {
+              if (!isActiveInterceptorInstance()) return;
+              const applied = decorateLatestOutgoingMessage(
+                normalizedTranslated,
+                normalizedOriginal,
+                operationId,
+                minimumRowIndex,
+              );
+              try {
+                console.log('[Ferdium Translator] Local preview attempt', {
+                  operationId,
+                  delayMs,
+                  applied,
+                });
+              } catch (_e) {}
+            }, delayMs);
+            registerCleanup(() => {
+              clearTimeout(timer);
+            });
+          }
+        };
 
         const isTextLooselyMatched = (actual, expected) => {
           const comparableActual = toComparableText(actual);
@@ -1779,7 +1966,14 @@ export default class MessageTranslatorStore extends FeatureStore {
             }
             console.log('[Ferdium Translator] Triggering native send', { operationId });
             state.bypassSendUntil = Date.now() + 2400;
+            const outgoingRowCountBeforeSend = getOutgoingMessageRows().length;
             await triggerNativeSend(preferClick, finalText, original, operationId);
+            queueLocalPreviewDecoration(
+              finalText,
+              original,
+              operationId,
+              outgoingRowCountBeforeSend,
+            );
             console.log('[Ferdium Translator] ===== Translation and send completed =====', { operationId });
           } catch (error) {
             console.error('[Ferdium Translator] ===== Translation failed =====', error);
