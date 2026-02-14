@@ -1,5 +1,5 @@
 import { outputJsonSync, pathExistsSync, readJsonSync } from 'fs-extra';
-import { makeObservable, observable, toJS } from 'mobx';
+import { action, makeObservable, observable, toJS } from 'mobx';
 import { userDataPath } from '../environment-remote';
 
 const debug = require('../preload-safe-debug')('Ferdium:Settings');
@@ -25,6 +25,7 @@ export default class Settings {
     }
   }
 
+  @action
   set(settings: object): void {
     this.store = this._merge(settings);
 
@@ -47,6 +48,7 @@ export default class Settings {
     return Object.assign(this.defaultState, this.store, settings);
   }
 
+  @action
   _hydrate(): void {
     this.store = this._merge(readJsonSync(this.settingsFile));
     debug('Hydrate store', this.type, this.allSerialized);
