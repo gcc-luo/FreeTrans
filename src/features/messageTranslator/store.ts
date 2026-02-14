@@ -279,15 +279,28 @@ export default class MessageTranslatorStore extends FeatureStore {
         if (!ipcRenderer || typeof ipcRenderer.sendToHost !== 'function') {
           return 'no-ipc';
         }
-        const interceptorVersion = '2026-02-13-v3';
+        const interceptorVersion = '2026-02-14-v10';
         if (
           window.__ferdiumTranslatorInterceptorLoaded &&
           window.__ferdiumTranslatorInterceptorVersion === interceptorVersion
         ) {
           return 'already';
         }
+        if (
+          window.__ferdiumTranslatorInterceptorLoaded &&
+          typeof window.__ferdiumTranslatorCleanup === 'function'
+        ) {
+          try {
+            window.__ferdiumTranslatorCleanup('version-change');
+          } catch (_error) {}
+        }
+        const instanceId =
+          'inst-' + Date.now() + '-' + Math.random().toString(16).slice(2, 8);
         window.__ferdiumTranslatorInterceptorLoaded = true;
         window.__ferdiumTranslatorInterceptorVersion = interceptorVersion;
+        window.__ferdiumTranslatorInterceptorInstanceId = instanceId;
+        window.__ferdiumTranslatorInterceptorInstallCount =
+          Number(window.__ferdiumTranslatorInterceptorInstallCount || 0) + 1;
 
         // Initialize state from host-side settings.
         const initialSettings = ${initialSettingsJson};
@@ -303,7 +316,68 @@ export default class MessageTranslatorStore extends FeatureStore {
           bypassSendUntil: 0,
           requestId: 0,
           requests: new Map(),
+          flowSeq: 0,
+          setSeq: 0,
+          activeTranslateOpId: null,
+          lastTrigger: null,
         };
+        const isActiveInterceptorInstance = () =>
+          window.__ferdiumTranslatorInterceptorInstanceId === instanceId;
+
+        const cleanupTasks = [];
+        const registerCleanup = fn => {
+          if (typeof fn === 'function') cleanupTasks.push(fn);
+        };
+
+        const addDomListener = (target, eventName, handler, options) => {
+          if (!target?.addEventListener || !target?.removeEventListener) return;
+          target.addEventListener(eventName, handler, options);
+          registerCleanup(() => {
+            try {
+              target.removeEventListener(eventName, handler, options);
+            } catch (_error) {}
+          });
+        };
+
+        const addIpcListener = (channel, handler) => {
+          if (!ipcRenderer || typeof ipcRenderer.on !== 'function') return;
+          ipcRenderer.on(channel, handler);
+          registerCleanup(() => {
+            try {
+              if (typeof ipcRenderer.removeListener === 'function') {
+                ipcRenderer.removeListener(channel, handler);
+              } else if (typeof ipcRenderer.off === 'function') {
+                ipcRenderer.off(channel, handler);
+              }
+            } catch (_error) {}
+          });
+        };
+
+        const disposeInterceptor = reason => {
+          for (const req of state.requests.values()) {
+            clearTimeout(req.timeout);
+            try {
+              req.reject(new Error('interceptor-disposed:' + String(reason || 'unknown')));
+            } catch (_error) {}
+          }
+          state.requests.clear();
+
+          while (cleanupTasks.length > 0) {
+            const task = cleanupTasks.pop();
+            try {
+              task && task();
+            } catch (_error) {}
+          }
+
+          if (window.__ferdiumTranslatorInterceptorInstanceId === instanceId) {
+            window.__ferdiumTranslatorInterceptorLoaded = false;
+            window.__ferdiumTranslatorInterceptorVersion = null;
+            window.__ferdiumTranslatorInterceptorInstanceId = null;
+            window.__ferdiumTranslatorCleanup = null;
+          }
+        };
+
+        window.__ferdiumTranslatorCleanup = disposeInterceptor;
 
         const isVisibleComposer = node => {
           if (!node) return false;
@@ -374,6 +448,67 @@ export default class MessageTranslatorStore extends FeatureStore {
           };
         };
 
+        const getEventDebug = event => {
+          if (!event) return null;
+          const target = event.target instanceof Element ? event.target : null;
+          return {
+            type: event.type,
+            isTrusted: !!event.isTrusted,
+            key: event.key,
+            code: event.code,
+            keyCode: event.keyCode,
+            inputType: event.inputType,
+            isComposing: !!event.isComposing,
+            shiftKey: !!event.shiftKey,
+            defaultPrevented: !!event.defaultPrevented,
+            timeStamp: Number(event.timeStamp || 0),
+            target: target
+              ? {
+                  tag: target.tagName,
+                  role: target.getAttribute('role'),
+                  contentEditable: target.getAttribute('contenteditable'),
+                  dataTab: target.getAttribute('data-tab'),
+                }
+              : null,
+          };
+        };
+
+        const getComposerStructure = el => {
+          if (!el || !(el instanceof Element)) return { exists: false };
+          const paragraphNodes = Array.from(el.querySelectorAll('p')).slice(0, 5);
+          const directChildren = Array.from(el.childNodes).slice(0, 8).map(node => {
+            if (node.nodeType === Node.TEXT_NODE) {
+              return {
+                kind: 'text',
+                text: String(node.textContent || '').trim().slice(0, 80),
+              };
+            }
+            if (node instanceof Element) {
+              return {
+                kind: 'element',
+                tag: node.tagName,
+                text: String(node.textContent || '').trim().slice(0, 80),
+              };
+            }
+            return { kind: 'node', nodeType: node.nodeType };
+          });
+          const paragraphs = paragraphNodes.map((p, index) => ({
+            index,
+            text: String(p.textContent || '').trim().slice(0, 120),
+            childCount: p.childNodes.length,
+            childTags: Array.from(p.children)
+              .slice(0, 6)
+              .map(child => child.tagName),
+          }));
+          return {
+            exists: true,
+            childNodeCount: el.childNodes.length,
+            paragraphCount: el.querySelectorAll('p').length,
+            directChildren,
+            paragraphs,
+          };
+        };
+
         const normalizeCompareText = value =>
           String(value || '')
             .trim()
@@ -389,6 +524,22 @@ export default class MessageTranslatorStore extends FeatureStore {
             .trim();
 
         const hasCjkChars = value => /[\\u3400-\\u9fff]/.test(String(value || ''));
+
+        const isTextLooselyMatched = (actual, expected) => {
+          const comparableActual = toComparableText(actual);
+          const comparableExpected = toComparableText(expected);
+          if (!comparableActual || !comparableExpected) return false;
+          if (!hasCjkChars(expected) && hasCjkChars(actual)) return false;
+          if (comparableActual === comparableExpected) return true;
+          if (comparableActual.includes(comparableExpected)) return true;
+          if (
+            comparableExpected.includes(comparableActual) &&
+            comparableActual.length >= Math.floor(comparableExpected.length * 0.9)
+          ) {
+            return true;
+          }
+          return false;
+        };
 
         const dispatchComposerInput = el => {
           try {
@@ -409,15 +560,44 @@ export default class MessageTranslatorStore extends FeatureStore {
           el.value = value;
         };
 
-        const setComposerText = (el, text) => {
+        const setComposerText = (el, text, options = {}) => {
+          if (!isActiveInterceptorInstance()) return;
           if (!el) return;
           const normalized = String(text || '');
+          const forceDomReplace = !!options.forceDomReplace;
+          const operationId = String(options.operationId || 'no-op');
+          const reason = String(options.reason || 'unspecified');
+          const setId = 'set-' + ++state.setSeq;
+          const isLexicalComposer =
+            String(el.getAttribute('data-lexical-editor') || '').toLowerCase() === 'true';
+          const allowDirectDomMutations =
+            !isLexicalComposer || !!options.allowLexicalDomMutation;
+          const originalText = String(options.originalText || '');
+          const beforeText = getComposerText(el);
           el.focus();
           const isTextInput =
             el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement;
 
           try {
-            console.log('[Ferdium Translator] setComposerText target:', JSON.stringify(getComposerDebug(el)));
+            console.log(
+              '[Ferdium Translator] setComposerText begin:',
+              JSON.stringify({
+                instanceId,
+                operationId,
+                setId,
+                reason,
+                forceDomReplace,
+                isLexicalComposer,
+                allowDirectDomMutations,
+                targetText: normalized.substring(0, 120),
+                targetComparable: toComparableText(normalized),
+                originalComparable: toComparableText(originalText),
+                beforeText: beforeText.substring(0, 120),
+                beforeComparable: toComparableText(beforeText),
+                target: getComposerDebug(el),
+                beforeStructure: getComposerStructure(el),
+              }),
+            );
           } catch (_e) {}
 
           if (isTextInput) {
@@ -448,23 +628,224 @@ export default class MessageTranslatorStore extends FeatureStore {
               inputEl.dispatchEvent(new Event('change', { bubbles: true }));
             } catch (_error) {}
             try {
-              console.log('[Ferdium Translator] setComposerText(input) before/after:', JSON.stringify({
-                before: beforeValue.substring(0, 120),
-                after: String(inputEl.value || '').substring(0, 120),
-              }));
+              const afterInputText = String(inputEl.value || '');
+              console.log(
+                '[Ferdium Translator] setComposerText(input) result:',
+                JSON.stringify({
+                  instanceId,
+                  operationId,
+                  setId,
+                  reason,
+                  forceDomReplace,
+                  before: beforeValue.substring(0, 120),
+                  after: afterInputText.substring(0, 120),
+                  targetComparable: toComparableText(normalized),
+                  afterComparable: toComparableText(afterInputText),
+                  looselyMatched: isTextLooselyMatched(afterInputText, normalized),
+                }),
+              );
             } catch (_e) {}
             return;
           }
 
           const selectAllInElement = target => {
             try {
+              target.focus();
+              try {
+                if (typeof document.execCommand === 'function') {
+                  document.execCommand('selectAll', false);
+                  const selectedText = String(window.getSelection()?.toString() || '');
+                  if (selectedText.trim().length > 0) {
+                    return true;
+                  }
+                }
+              } catch (_error) {}
               const selection = window.getSelection();
+              if (!selection) return false;
+
+              const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+              const firstTextNode = walker.nextNode();
+              let lastTextNode = firstTextNode;
+              while (walker.nextNode()) {
+                lastTextNode = walker.currentNode;
+              }
+
               const range = document.createRange();
-              range.selectNodeContents(target);
-              selection?.removeAllRanges();
-              selection?.addRange(range);
-              return true;
+              if (firstTextNode && lastTextNode) {
+                range.setStart(firstTextNode, 0);
+                range.setEnd(lastTextNode, String(lastTextNode.textContent || '').length);
+              } else {
+                range.selectNodeContents(target);
+              }
+
+              selection.removeAllRanges();
+              selection.addRange(range);
+              return selection.rangeCount > 0;
             } catch (_error) {
+              return false;
+            }
+          };
+
+          const getSelectionText = () => {
+            try {
+              return String(window.getSelection()?.toString() || '');
+            } catch (_error) {
+              return '';
+            }
+          };
+
+          const getLexicalEditorInstance = () => {
+            if (!isLexicalComposer) return null;
+            try {
+              const direct = el.__lexicalEditor || el._lexicalEditor;
+              if (direct && typeof direct === 'object') return direct;
+            } catch (_error) {}
+            return null;
+          };
+
+          const replaceViaLexicalParagraphText = () => {
+            // Direct DOM mutation is unstable with Lexical and may be reverted.
+            return false;
+          };
+
+          const replaceViaLexicalEditorState = () => {
+            if (!isLexicalComposer) return false;
+            try {
+              const editor = getLexicalEditorInstance();
+              if (!editor) {
+                try {
+                  console.log(
+                    '[Ferdium Translator] setComposerText strategy:',
+                    JSON.stringify({
+                      instanceId,
+                      operationId,
+                      setId,
+                      strategy: 'lexical.editorState',
+                      ok: false,
+                      reason: 'no-editor-instance',
+                    }),
+                  );
+                } catch (_e) {}
+                return false;
+              }
+              if (
+                typeof editor.parseEditorState !== 'function' ||
+                typeof editor.setEditorState !== 'function'
+              ) {
+                try {
+                  console.log(
+                    '[Ferdium Translator] setComposerText strategy:',
+                    JSON.stringify({
+                      instanceId,
+                      operationId,
+                      setId,
+                      strategy: 'lexical.editorState',
+                      ok: false,
+                      reason: 'missing-editor-method',
+                      hasParseEditorState: typeof editor.parseEditorState === 'function',
+                      hasSetEditorState: typeof editor.setEditorState === 'function',
+                    }),
+                  );
+                } catch (_e) {}
+                return false;
+              }
+
+              const textChildren = normalized
+                ? [
+                    {
+                      detail: 0,
+                      format: 0,
+                      mode: 'normal',
+                      style: '',
+                      text: normalized,
+                      type: 'text',
+                      version: 1,
+                    },
+                  ]
+                : [];
+              const nextStatePayload = {
+                root: {
+                  children: [
+                    {
+                      children: textChildren,
+                      direction: 'ltr',
+                      format: '',
+                      indent: 0,
+                      type: 'paragraph',
+                      version: 1,
+                    },
+                  ],
+                  direction: 'ltr',
+                  format: '',
+                  indent: 0,
+                  type: 'root',
+                  version: 1,
+                },
+              };
+
+              let parsedState = null;
+              try {
+                parsedState = editor.parseEditorState(JSON.stringify(nextStatePayload));
+              } catch (_stringParseError) {
+                parsedState = editor.parseEditorState(nextStatePayload);
+              }
+              if (!parsedState) {
+                try {
+                  console.log(
+                    '[Ferdium Translator] setComposerText strategy:',
+                    JSON.stringify({
+                      instanceId,
+                      operationId,
+                      setId,
+                      strategy: 'lexical.editorState',
+                      ok: false,
+                      reason: 'parse-editor-state-empty',
+                    }),
+                  );
+                } catch (_e) {}
+                return false;
+              }
+
+              editor.setEditorState(parsedState);
+              try {
+                if (typeof editor.focus === 'function') {
+                  editor.focus();
+                }
+              } catch (_focusError) {}
+
+              const after = getComposerText(el);
+              const ok = isTextLooselyMatched(after, normalized);
+              try {
+                console.log(
+                  '[Ferdium Translator] setComposerText strategy:',
+                  JSON.stringify({
+                    instanceId,
+                    operationId,
+                    setId,
+                    strategy: 'lexical.editorState',
+                    isLexicalComposer,
+                    hasEditor: true,
+                    editorKeys: Object.keys(editor).slice(0, 15),
+                    after: String(after || '').substring(0, 120),
+                    ok,
+                  }),
+                );
+              } catch (_e) {}
+              return ok;
+            } catch (_error) {
+              try {
+                console.log(
+                  '[Ferdium Translator] setComposerText strategy:',
+                  JSON.stringify({
+                    instanceId,
+                    operationId,
+                    setId,
+                    strategy: 'lexical.editorState',
+                    ok: false,
+                    reason: String(_error?.message || _error || 'unknown-error'),
+                  }),
+                );
+              } catch (_e) {}
               return false;
             }
           };
@@ -473,11 +854,75 @@ export default class MessageTranslatorStore extends FeatureStore {
             try {
               if (typeof document.execCommand !== 'function') return false;
               el.focus();
-              selectAllInElement(el);
-              document.execCommand('delete', false);
-              selectAllInElement(el);
-              const inserted = document.execCommand('insertText', false, normalized);
-              return inserted || getComposerText(el).trim() === normalized.trim();
+              const selected = selectAllInElement(el);
+              const selectedText = getSelectionText();
+              if (!selected) return false;
+              document.execCommand('insertText', false, normalized);
+              const after = getComposerText(el);
+              const ok = isTextLooselyMatched(after, normalized);
+              try {
+                console.log(
+                  '[Ferdium Translator] setComposerText strategy:',
+                  JSON.stringify({
+                    instanceId,
+                    operationId,
+                    setId,
+                    strategy: 'execCommand.insertText',
+                    isLexicalComposer,
+                    selectedText: selectedText.substring(0, 120),
+                    after: String(after || '').substring(0, 120),
+                    ok,
+                  }),
+                );
+              } catch (_e) {}
+              return ok;
+            } catch (_error) {
+              return false;
+            }
+          };
+
+          const replaceViaLexicalReplacementBeforeInput = () => {
+            if (!isLexicalComposer) return false;
+            try {
+              el.focus();
+              const selected = selectAllInElement(el);
+              const selectedText = getSelectionText();
+              if (!selected) return false;
+              el.dispatchEvent(
+                new InputEvent('beforeinput', {
+                  bubbles: true,
+                  cancelable: true,
+                  composed: true,
+                  inputType: 'insertReplacementText',
+                  data: normalized,
+                }),
+              );
+              el.dispatchEvent(
+                new InputEvent('input', {
+                  bubbles: true,
+                  composed: true,
+                  inputType: 'insertReplacementText',
+                  data: normalized,
+                }),
+              );
+              const after = getComposerText(el);
+              const ok = isTextLooselyMatched(after, normalized);
+              try {
+                console.log(
+                  '[Ferdium Translator] setComposerText strategy:',
+                  JSON.stringify({
+                    instanceId,
+                    operationId,
+                    setId,
+                    strategy: 'lexical.beforeinput.insertReplacementText',
+                    isLexicalComposer,
+                    selectedText: selectedText.substring(0, 120),
+                    after: String(after || '').substring(0, 120),
+                    ok,
+                  }),
+                );
+              } catch (_e) {}
+              return ok;
             } catch (_error) {
               return false;
             }
@@ -519,15 +964,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               );
 
               const after = getComposerText(el);
-              const comparableAfter = toComparableText(after);
-              const comparableTarget = toComparableText(normalized);
-              return (
-                !!comparableAfter &&
-                !!comparableTarget &&
-                (comparableAfter === comparableTarget ||
-                  comparableAfter.includes(comparableTarget) ||
-                  comparableTarget.includes(comparableAfter))
-              );
+              return isTextLooselyMatched(after, normalized);
             } catch (_error) {
               return false;
             }
@@ -536,7 +973,9 @@ export default class MessageTranslatorStore extends FeatureStore {
           const replaceViaPasteEvent = () => {
             try {
               el.focus();
-              selectAllInElement(el);
+              const selected = selectAllInElement(el);
+              const selectedText = getSelectionText();
+              if (!selected) return false;
 
               let dataTransfer = null;
               try {
@@ -556,7 +995,8 @@ export default class MessageTranslatorStore extends FeatureStore {
                     cancelable: true,
                     clipboardData: dataTransfer || undefined,
                   });
-                  dispatched = el.dispatchEvent(pasteEvent);
+                  el.dispatchEvent(pasteEvent);
+                  dispatched = true;
                 } catch (_error) {
                   dispatched = false;
                 }
@@ -571,56 +1011,97 @@ export default class MessageTranslatorStore extends FeatureStore {
               }
 
               const after = getComposerText(el);
-              const comparableAfter = toComparableText(after);
-              const comparableTarget = toComparableText(normalized);
-              return (
-                !!comparableAfter &&
-                !!comparableTarget &&
-                (comparableAfter === comparableTarget ||
-                  comparableAfter.includes(comparableTarget) ||
-                  comparableTarget.includes(comparableAfter))
-              );
+              const ok = isTextLooselyMatched(after, normalized);
+              try {
+                console.log(
+                  '[Ferdium Translator] setComposerText strategy:',
+                  JSON.stringify({
+                    instanceId,
+                    operationId,
+                    setId,
+                    strategy: 'pasteEvent',
+                    isLexicalComposer,
+                    dispatched,
+                    selectedText: selectedText.substring(0, 120),
+                    after: String(after || '').substring(0, 120),
+                    ok,
+                  }),
+                );
+              } catch (_e) {}
+              return ok;
             } catch (_error) {
               return false;
             }
           };
 
           let replacedByDomReplace = false;
+          let replacedByLexicalReplace = false;
+          let replacedByLexicalEditorState = false;
           let replacedByExecCommand = false;
           let replacedBySyntheticBeforeInput = false;
           let replacedByPasteEvent = false;
-          replacedByExecCommand = replaceViaExecCommand();
+          if (!forceDomReplace) {
+            if (isLexicalComposer) {
+              replacedByLexicalEditorState = replaceViaLexicalEditorState();
+              if (!replacedByLexicalEditorState) {
+                replacedByExecCommand = replaceViaExecCommand();
+              }
+              if (!replacedByLexicalEditorState && !replacedByExecCommand) {
+                replacedBySyntheticBeforeInput = replaceViaLexicalReplacementBeforeInput();
+              }
+            } else {
+              replacedByExecCommand = replaceViaExecCommand();
 
-          if (replacedByExecCommand && getComposerText(el).trim() !== normalized.trim()) {
-            replacedByExecCommand = false;
-          }
+              if (
+                replacedByExecCommand &&
+                !isTextLooselyMatched(getComposerText(el), normalized)
+              ) {
+                replacedByExecCommand = false;
+              }
 
-          if (!replacedByExecCommand) {
-            replacedBySyntheticBeforeInput = replaceViaSyntheticBeforeInput();
-          }
+              if (!replacedByExecCommand) {
+                replacedByPasteEvent = replaceViaPasteEvent();
+              }
 
-          if (!replacedByExecCommand && !replacedBySyntheticBeforeInput) {
-            replacedByPasteEvent = replaceViaPasteEvent();
+              if (!replacedByExecCommand && !replacedByPasteEvent) {
+                replacedBySyntheticBeforeInput = replaceViaSyntheticBeforeInput();
+              }
+            }
           }
 
           try {
             if (
-              !replacedByExecCommand &&
-              !replacedBySyntheticBeforeInput &&
-              !replacedByPasteEvent
+              allowDirectDomMutations &&
+              (
+                forceDomReplace ||
+                (
+                  !replacedByExecCommand &&
+                  !replacedBySyntheticBeforeInput &&
+                  !replacedByPasteEvent
+                )
+              )
             ) {
-              while (el.firstChild) {
-                el.removeChild(el.firstChild);
+              if (isLexicalComposer && allowDirectDomMutations) {
+                replacedByLexicalReplace = replaceViaLexicalParagraphText();
               }
-              if (normalized) {
-                el.appendChild(document.createTextNode(normalized));
+              if (!replacedByLexicalReplace && allowDirectDomMutations) {
+                while (el.firstChild) {
+                  el.removeChild(el.firstChild);
+                }
+                if (normalized) {
+                  el.appendChild(document.createTextNode(normalized));
+                }
+                replacedByDomReplace = isTextLooselyMatched(getComposerText(el), normalized);
               }
-              replacedByDomReplace = true;
+              if (replacedByLexicalReplace) {
+                replacedByDomReplace = true;
+              }
             }
           } catch (_error) {}
 
           // Fallback using Range API if direct replacement failed.
           if (
+            allowDirectDomMutations &&
             !replacedByExecCommand &&
             !replacedBySyntheticBeforeInput &&
             !replacedByPasteEvent &&
@@ -636,12 +1117,13 @@ export default class MessageTranslatorStore extends FeatureStore {
               range.collapse(false);
               selection?.removeAllRanges();
               selection?.addRange(range);
-              replacedByDomReplace = true;
+              replacedByDomReplace = isTextLooselyMatched(getComposerText(el), normalized);
             } catch (_error) {}
           }
 
           // Last fallback.
           if (
+            allowDirectDomMutations &&
             !replacedByExecCommand &&
             !replacedBySyntheticBeforeInput &&
             !replacedByPasteEvent &&
@@ -650,10 +1132,12 @@ export default class MessageTranslatorStore extends FeatureStore {
             el.textContent = normalized;
           }
 
-          dispatchComposerInput(el);
-          try {
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-          } catch (_error) {}
+          if (!isLexicalComposer) {
+            dispatchComposerInput(el);
+            try {
+              el.dispatchEvent(new Event('input', { bubbles: true }));
+            } catch (_error) {}
+          }
 
           try {
             const selection = window.getSelection();
@@ -665,14 +1149,43 @@ export default class MessageTranslatorStore extends FeatureStore {
           } catch (_error) {}
 
           try {
-            console.log('[Ferdium Translator] setComposerText(contenteditable) result:', JSON.stringify({
-              usedExecCommand: replacedByExecCommand,
-              usedSyntheticBeforeInput: replacedBySyntheticBeforeInput,
-              usedPasteEvent: replacedByPasteEvent,
-              usedDomReplace: replacedByDomReplace,
-              afterText: getComposerText(el).substring(0, 120),
-              afterHtml: String(el.innerHTML || '').substring(0, 120),
-            }));
+            const afterText = getComposerText(el);
+            const comparableAfter = toComparableText(afterText);
+            const comparableTarget = toComparableText(normalized);
+            const comparableOriginal = toComparableText(originalText);
+            console.log(
+              '[Ferdium Translator] setComposerText(contenteditable) result:',
+              JSON.stringify({
+                instanceId,
+                operationId,
+                setId,
+                reason,
+                forceDomReplace,
+                isLexicalComposer,
+                allowDirectDomMutations,
+                skippedDirectDomMutation: isLexicalComposer && !allowDirectDomMutations,
+                usedLexicalEditorState: replacedByLexicalEditorState,
+                usedLexicalReplace: replacedByLexicalReplace,
+                usedExecCommand: replacedByExecCommand,
+                usedSyntheticBeforeInput: replacedBySyntheticBeforeInput,
+                usedPasteEvent: replacedByPasteEvent,
+                usedDomReplace: replacedByDomReplace,
+                beforeText: beforeText.substring(0, 120),
+                afterText: afterText.substring(0, 120),
+                targetText: normalized.substring(0, 120),
+                beforeComparable: toComparableText(beforeText),
+                afterComparable: comparableAfter,
+                targetComparable: comparableTarget,
+                originalComparable: comparableOriginal,
+                looselyMatched: isTextLooselyMatched(afterText, normalized),
+                containsOriginal:
+                  !!comparableOriginal && !!comparableAfter && comparableAfter.includes(comparableOriginal),
+                containsTarget:
+                  !!comparableTarget && !!comparableAfter && comparableAfter.includes(comparableTarget),
+                structure: getComposerStructure(el),
+                afterHtml: String(el.innerHTML || '').substring(0, 180),
+              }),
+            );
           } catch (_e) {}
         };
 
@@ -696,20 +1209,27 @@ export default class MessageTranslatorStore extends FeatureStore {
           return false;
         };
 
-        const forceSyncViaFooterTextarea = (text, originalText) => {
+        const forceSyncViaFooterTextarea = (text, originalText, operationId = 'no-op') => {
           const footer = document.querySelector('footer');
           const textarea = footer?.querySelector?.('textarea');
           if (!(textarea instanceof HTMLTextAreaElement)) {
             return false;
           }
           try {
-            console.log('[Ferdium Translator] Trying textarea fallback sync');
+            console.log('[Ferdium Translator] Trying textarea fallback sync', {
+              operationId,
+            });
           } catch (_e) {}
-          setComposerText(textarea, text);
+          setComposerText(textarea, text, {
+            operationId,
+            reason: 'footer-textarea-fallback',
+            originalText,
+          });
           const after = getComposerText(textarea);
           const ok = isComposerSynced(after, text, originalText);
           try {
             console.log('[Ferdium Translator] Textarea fallback result:', {
+              operationId,
               ok,
               after: after?.substring(0, 120),
             });
@@ -875,7 +1395,8 @@ export default class MessageTranslatorStore extends FeatureStore {
           }
         };
 
-        ipcRenderer.on('translator:translation-result', (_event, result = {}) => {
+        const handleTranslationResult = (_event, result = {}) => {
+          if (!isActiveInterceptorInstance()) return;
           const req = state.requests.get(result.requestId);
           if (!req) {
             try {
@@ -910,9 +1431,28 @@ export default class MessageTranslatorStore extends FeatureStore {
             } catch (_errorLog) {}
             req.reject(new Error(errorMsg));
           }
-        });
+        };
+        addIpcListener('translator:translation-result', handleTranslationResult);
 
-        const triggerNativeSend = async (preferClick, desiredText = '', originalText = '') => {
+        const triggerNativeSend = async (
+          preferClick,
+          desiredText = '',
+          originalText = '',
+          operationId = 'no-op',
+        ) => {
+          if (!isActiveInterceptorInstance()) {
+            return;
+          }
+          try {
+            console.log('[Ferdium Translator] triggerNativeSend start:', JSON.stringify({
+              instanceId,
+              operationId,
+              preferClick,
+              desiredText: String(desiredText || '').substring(0, 120),
+              originalText: String(originalText || '').substring(0, 120),
+            }));
+          } catch (_e) {}
+
           const trySendViaClick = () => {
             const sendButton = findSendButton();
             if (!sendButton) return false;
@@ -981,13 +1521,17 @@ export default class MessageTranslatorStore extends FeatureStore {
           if (composer && desiredText) {
             const currentText = getComposerText(composer);
             if (!isComposerSynced(currentText, desiredText, originalText)) {
-              setComposerText(composer, desiredText);
+              setComposerText(composer, desiredText, {
+                operationId,
+                reason: 'ensure-before-send',
+                originalText,
+              });
               await sleep(120);
             }
 
             const afterEnsure = getComposerText(readComposer());
             if (!isComposerSynced(afterEnsure, desiredText, originalText)) {
-              const fallbackOk = forceSyncViaFooterTextarea(desiredText, originalText);
+              const fallbackOk = forceSyncViaFooterTextarea(desiredText, originalText, operationId);
               if (!fallbackOk) {
                 throw new Error('composer-update-before-send-failed');
               }
@@ -1018,35 +1562,70 @@ export default class MessageTranslatorStore extends FeatureStore {
               trySendViaEnter();
             }
           }
+
+          try {
+            console.log('[Ferdium Translator] triggerNativeSend end:', JSON.stringify({
+              instanceId,
+              operationId,
+              beforeSend: String(beforeSend || '').substring(0, 120),
+              afterFirstAttempt: String(afterFirstAttempt || '').substring(0, 120),
+            }));
+          } catch (_e) {}
         };
 
-        const translateAndSend = async preferClick => {
+        const translateAndSend = async (preferClick, triggerSource = 'unknown', triggerEvent = null) => {
+          if (!isActiveInterceptorInstance()) {
+            return;
+          }
+          const operationId = 'tx-' + ++state.flowSeq;
+          const triggerDebug = getEventDebug(triggerEvent);
+          state.lastTrigger = {
+            operationId,
+            triggerSource,
+            triggerDebug,
+            at: Date.now(),
+          };
           try {
             console.log('[Ferdium Translator] translateAndSend called', {
+              instanceId,
+              operationId,
+              triggerSource,
+              triggerDebug,
               sendTranslation: state.settings.sendTranslation,
               translating: state.translating,
+              activeTranslateOpId: state.activeTranslateOpId,
               preferClick,
             });
           } catch (_e) {}
-          
+
           if (!state.settings.sendTranslation) {
             try {
-              console.warn('[Ferdium Translator] sendTranslation is false, aborting');
+              console.warn('[Ferdium Translator] sendTranslation is false, aborting', {
+                operationId,
+                triggerSource,
+              });
             } catch (_e) {}
             return;
           }
           if (state.translating) {
             try {
-              console.warn('[Ferdium Translator] Already translating, skipping');
+              console.warn('[Ferdium Translator] Already translating, skipping', {
+                operationId,
+                triggerSource,
+                activeTranslateOpId: state.activeTranslateOpId,
+                lastTrigger: state.lastTrigger,
+              });
             } catch (_e) {}
             return;
           }
-          
+
           const composer = readComposer();
           const original = getComposerText(composer);
           if (!composer || !original) {
             try {
               console.warn('[Ferdium Translator] No composer or empty text', {
+                operationId,
+                triggerSource,
                 hasComposer: !!composer,
                 originalLength: original?.length,
               });
@@ -1056,28 +1635,39 @@ export default class MessageTranslatorStore extends FeatureStore {
 
           let hideStatusImmediately = true;
           state.translating = true;
+          state.activeTranslateOpId = operationId;
           showStatus('Translating...', true, false);
-          
+
           try {
             // Verbose diagnostics to debug the full translation-send flow.
-            console.log('[Ferdium Translator] ===== Starting translation =====');
+            console.log('[Ferdium Translator] ===== Starting translation =====', {
+              instanceId,
+              operationId,
+              triggerSource,
+            });
             console.log('[Ferdium Translator] Original text:', original);
             console.log(
               '[Ferdium Translator] Settings:',
               JSON.stringify({
+                instanceId,
+                operationId,
                 myLanguage: state.settings.myLanguage,
                 targetLanguage: state.settings.targetLanguage,
                 translatorEngine: state.settings.translatorEngine,
                 sendTranslation: state.settings.sendTranslation,
+                composerDebug: getComposerDebug(composer),
+                composerStructure: getComposerStructure(composer),
               }),
             );
-            
+
             const translated = await translate(original);
             const finalText = (translated || original).trim() || original;
-            
+
             console.log(
               '[Ferdium Translator] Translation result:',
               JSON.stringify({
+                instanceId,
+                operationId,
                 original: original.substring(0, 100),
                 translated: finalText.substring(0, 100),
                 success: finalText !== original,
@@ -1085,49 +1675,83 @@ export default class MessageTranslatorStore extends FeatureStore {
               }),
             );
             console.log('[Ferdium Translator] Setting composer text to:', finalText.substring(0, 100));
-            setComposerText(composer, finalText);
+            let activeComposer = composer;
+            let isLexicalFlow =
+              String(activeComposer?.getAttribute('data-lexical-editor') || '').toLowerCase() === 'true';
+            setComposerText(activeComposer, finalText, {
+              operationId,
+              reason: 'translate-first-set',
+              originalText: original,
+            });
             await sleep(180);
-            let afterSet = getComposerText(composer);
+            let afterSet = getComposerText(activeComposer);
             console.log('[Ferdium Translator] After first set, composer text:', afterSet?.substring(0, 100));
-            
-            if ((afterSet || '').trim() !== finalText) {
-              console.log('[Ferdium Translator] Text mismatch, retrying set');
-              setComposerText(composer, finalText);
-              await sleep(260);
-              afterSet = getComposerText(composer);
-              console.log('[Ferdium Translator] After second set, composer text:', afterSet?.substring(0, 100));
-            }
+
             if (!isComposerSynced(afterSet, finalText, original)) {
+              if (isLexicalFlow) {
+                console.log(
+                  '[Ferdium Translator] Lexical composer not synced after first set, skipping repeat set attempts',
+                  { operationId },
+                );
+              } else {
+                console.log('[Ferdium Translator] Not synced, retrying with DOM replace');
+                activeComposer = readComposer() || activeComposer;
+                isLexicalFlow =
+                  String(activeComposer?.getAttribute('data-lexical-editor') || '').toLowerCase() === 'true';
+                setComposerText(activeComposer, finalText, {
+                  operationId,
+                  reason: 'translate-second-set-force-dom',
+                  originalText: original,
+                  forceDomReplace: !isLexicalFlow,
+                });
+                await sleep(260);
+                afterSet = getComposerText(activeComposer);
+                console.log('[Ferdium Translator] After second set, composer text:', afterSet?.substring(0, 100));
+              }
+            }
+            if (!isComposerSynced(afterSet, finalText, original) && !isLexicalFlow) {
               console.log('[Ferdium Translator] Still not synced, third attempt');
-              setComposerText(composer, finalText);
+              activeComposer = readComposer() || activeComposer;
+              setComposerText(activeComposer, finalText, {
+                operationId,
+                reason: 'translate-third-set',
+                originalText: original,
+              });
               await sleep(220);
-              afterSet = getComposerText(composer);
+              afterSet = getComposerText(activeComposer);
               console.log('[Ferdium Translator] After third set, composer text:', afterSet?.substring(0, 100));
             }
             if (!isComposerSynced(afterSet, finalText, original)) {
-              const fallbackOk = forceSyncViaFooterTextarea(finalText, original);
+              const fallbackOk = forceSyncViaFooterTextarea(finalText, original, operationId);
               if (fallbackOk) {
                 await sleep(180);
                 const fallbackComposer = readComposer();
                 afterSet = getComposerText(fallbackComposer);
-                console.log('[Ferdium Translator] After textarea fallback, composer text:', afterSet?.substring(0, 100));
+                console.log(
+                  '[Ferdium Translator] After textarea fallback, composer text:',
+                  afterSet?.substring(0, 100),
+                );
               }
             }
             if (!isComposerSynced(afterSet, finalText, original)) {
               throw new Error('composer-update-failed');
             }
-            console.log('[Ferdium Translator] Triggering native send');
+            console.log('[Ferdium Translator] Triggering native send', { operationId });
             state.bypassSendUntil = Date.now() + 2400;
-            await triggerNativeSend(preferClick, finalText, original);
-            console.log('[Ferdium Translator] ===== Translation and send completed =====');
+            await triggerNativeSend(preferClick, finalText, original, operationId);
+            console.log('[Ferdium Translator] ===== Translation and send completed =====', { operationId });
           } catch (error) {
             console.error('[Ferdium Translator] ===== Translation failed =====', error);
             console.error(
               '[Ferdium Translator] Error details:',
               JSON.stringify({
+                instanceId,
+                operationId,
+                triggerSource,
                 message: error?.message,
                 stack: error?.stack,
                 name: error?.name,
+                lastTrigger: state.lastTrigger,
               }),
             );
             const errorMessage =
@@ -1143,6 +1767,9 @@ export default class MessageTranslatorStore extends FeatureStore {
               showStatus('', false, false);
             }
             state.translating = false;
+            if (state.activeTranslateOpId === operationId) {
+              state.activeTranslateOpId = null;
+            }
             setTimeout(() => {
               state.bypassSendUntil = 0;
             }, 2600);
@@ -1162,7 +1789,8 @@ export default class MessageTranslatorStore extends FeatureStore {
           return false;
         };
 
-        document.addEventListener('keydown', event => {
+        const handleComposerKeyDown = event => {
+          if (!isActiveInterceptorInstance()) return;
           if (event.key !== 'Enter' || event.shiftKey) return;
           if (event.isComposing || event.keyCode === 229) return;
           if (!state.settings.sendTranslation) {
@@ -1195,27 +1823,40 @@ export default class MessageTranslatorStore extends FeatureStore {
             return;
           }
           try {
-            console.log('[Ferdium Translator] Intercepting Enter key, starting translation');
+            console.log('[Ferdium Translator] Intercepting Enter key, starting translation', {
+              event: getEventDebug(event),
+            });
           } catch (_e) {}
           event.preventDefault();
           event.stopPropagation();
-          translateAndSend(false);
-        }, true);
+          translateAndSend(false, 'keydown-enter', event);
+        };
 
-        document.addEventListener('beforeinput', event => {
+        const handleComposerBeforeInput = event => {
+          if (!isActiveInterceptorInstance()) return;
           if (!state.settings.sendTranslation) return;
           if (Date.now() < state.bypassSendUntil) return;
+          if (event.isComposing) return;
           const inputType = String(event.inputType || '');
           if (inputType !== 'insertLineBreak' && inputType !== 'insertParagraph') {
             return;
           }
           if (!isEditableTarget(event.target)) return;
+          try {
+            console.log('[Ferdium Translator] Intercepting beforeinput send action', {
+              event: getEventDebug(event),
+            });
+          } catch (_e) {}
           event.preventDefault();
           event.stopPropagation();
-          translateAndSend(false);
-        }, true);
+          translateAndSend(false, 'beforeinput-linebreak', event);
+        };
+
+        addDomListener(document, 'keydown', handleComposerKeyDown, true);
+        addDomListener(document, 'beforeinput', handleComposerBeforeInput, true);
 
         const handleSendButtonEvent = event => {
+          if (!isActiveInterceptorInstance()) return;
           if (!state.settings.sendTranslation) {
             return;
           }
@@ -1236,17 +1877,29 @@ export default class MessageTranslatorStore extends FeatureStore {
           }
 
           if (state.translating) {
+            try {
+              console.log('[Ferdium Translator] Send button ignored because translating', {
+                activeTranslateOpId: state.activeTranslateOpId,
+                event: getEventDebug(event),
+              });
+            } catch (_e) {}
             return;
           }
 
-          translateAndSend(true);
+          try {
+            console.log('[Ferdium Translator] Intercepting send button, starting translation', {
+              event: getEventDebug(event),
+            });
+          } catch (_e) {}
+          translateAndSend(true, 'send-button', event);
         };
 
-        document.addEventListener('pointerdown', handleSendButtonEvent, true);
-        document.addEventListener('mousedown', handleSendButtonEvent, true);
-        document.addEventListener('click', handleSendButtonEvent, true);
+        addDomListener(document, 'pointerdown', handleSendButtonEvent, true);
+        addDomListener(document, 'mousedown', handleSendButtonEvent, true);
+        addDomListener(document, 'click', handleSendButtonEvent, true);
 
-        ipcRenderer.on('translator:configure', (_event, settings) => {
+        const handleTranslatorConfigure = (_event, settings) => {
+          if (!isActiveInterceptorInstance()) return;
           console.log('[Ferdium Translator] Received configuration update:', settings);
           if (settings) {
             // 淇濈暀鐢ㄦ埛閫夋嫨鐨勬墍鏈夎缃紝鍖呮嫭 translatorEngine 鍜岃瑷€璁剧疆
@@ -1264,18 +1917,25 @@ export default class MessageTranslatorStore extends FeatureStore {
               new: state.settings,
             });
           }
-        });
+        };
+        addIpcListener('translator:configure', handleTranslatorConfigure);
 
         // 鍙戦€佸垵濮嬪寲瀹屾垚娑堟伅鍒颁富杩涚▼锛岃繖鏍峰彲浠ュ湪涓绘帶鍒跺彴鐪嬪埌
         ipcRenderer.sendToHost('translator:initialized', {
           serviceId: '${serviceId}',
           settings: state.settings,
+          instanceId,
+          interceptorVersion,
+          installCount: Number(window.__ferdiumTranslatorInterceptorInstallCount || 0),
         });
 
         // 灏濊瘯澶氱鏂瑰紡杈撳嚭鏃ュ織锛岀‘淇濊兘鐪嬪埌
         try {
           console.log('[Ferdium Translator] Interceptor initialized successfully', {
             serviceId: '${serviceId}',
+            instanceId,
+            interceptorVersion,
+            installCount: Number(window.__ferdiumTranslatorInterceptorInstallCount || 0),
             settings: state.settings,
           });
           // Also log with warn level because some environments hide console.log.
@@ -1290,8 +1950,50 @@ export default class MessageTranslatorStore extends FeatureStore {
             console.log('[Ferdium Translator] Composer found:', !!readComposer());
             return {
               initialized: true,
+              instanceId,
+              interceptorVersion,
+              installCount: Number(window.__ferdiumTranslatorInterceptorInstallCount || 0),
               settings: state.settings,
               composerFound: !!readComposer(),
+            };
+          };
+          window.__ferdiumTranslatorDebugState = () => ({
+            instanceId,
+            interceptorVersion,
+            installCount: Number(window.__ferdiumTranslatorInterceptorInstallCount || 0),
+            isActive: isActiveInterceptorInstance(),
+            translating: state.translating,
+            activeTranslateOpId: state.activeTranslateOpId,
+            bypassSendUntil: state.bypassSendUntil,
+          });
+          window.__ferdiumTranslatorRunCase = async targetText => {
+            if (!isActiveInterceptorInstance()) {
+              return { ok: false, reason: 'inactive-interceptor-instance', instanceId };
+            }
+            const composer = readComposer();
+            if (!composer) {
+              return { ok: false, reason: 'no-composer', instanceId };
+            }
+            const target = String(targetText || '').trim();
+            if (!target) {
+              return { ok: false, reason: 'empty-target', instanceId };
+            }
+            const original = getComposerText(composer);
+            const operationId = 'manual-case-' + Date.now();
+            setComposerText(composer, target, {
+              operationId,
+              reason: 'manual-test-case',
+              originalText: original,
+            });
+            await sleep(320);
+            const after = getComposerText(readComposer() || composer);
+            return {
+              ok: isComposerSynced(after, target, original),
+              instanceId,
+              operationId,
+              original: original.substring(0, 120),
+              target: target.substring(0, 120),
+              after: String(after || '').substring(0, 120),
             };
           };
         } catch (_e) {}
@@ -1429,5 +2131,3 @@ export default class MessageTranslatorStore extends FeatureStore {
     this._pushSettingsToService(this.activeServiceId);
   };
 }
-
-
