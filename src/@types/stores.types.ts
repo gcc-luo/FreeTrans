@@ -15,6 +15,7 @@ export interface FerdiumStores {
   communityRecipes: CommunityRecipesStore;
   features: FeaturesStore;
   globalError: GlobalErrorStore;
+  messageTranslator?: any;
   recipePreviews: RecipePreviewsStore;
   recipes: RecipeStore;
   requests: RequestsStore;
@@ -32,6 +33,7 @@ export interface Stores {
   communityRecipes: CommunityRecipesStore;
   features: FeaturesStore;
   globalError: GlobalErrorStore;
+  messageTranslator?: any;
   recipePreviews: RecipePreviewsStore;
   recipes: RecipeStore;
   requests: RequestsStore;
@@ -84,7 +86,7 @@ export interface AppStore extends TypedStore {
   accentColor: string;
   adaptableDarkMode: boolean;
   progressbarAccentColor: string;
-  authRequestFailed: () => void;
+  authRequestFailed: boolean;
   autoLaunchOnStart: () => void;
   automaticUpdates: boolean;
   isTwoFactorAutoCatcherEnabled: boolean;

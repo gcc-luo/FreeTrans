@@ -28,6 +28,7 @@ node_modules
 /build/
 /out/
 /recipes/
+tmp-translator-script.js
 
 # package files
 package.json

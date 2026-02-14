@@ -36,12 +36,9 @@ class RecipesScreen extends Component<IProps, IState> {
     super(props);
 
     const allJsonPath = asarRecipesPath('all.json');
-    if (pathExistsSync(allJsonPath)) {
-      this.customRecipes = readJsonSync(allJsonPath);
-    } else {
-      // Use empty array as default if file doesn't exist
-      this.customRecipes = [];
-    }
+    this.customRecipes = pathExistsSync(allJsonPath)
+      ? readJsonSync(allJsonPath)
+      : [];
     this.state = {
       needle: null,
       currentFilter: 'featured',

@@ -122,12 +122,10 @@ export default class GlobalErrorStore extends TypedStore {
         } as Request,
         error: this.error,
         response: this.response,
-        server: this.stores?.settings?.app?.server,
+        server: this.stores?.settings?.all?.app?.server,
       });
-    } else {
-      if (this.stores?.app) {
-        this.stores.app.authRequestFailed = false;
-      }
+    } else if (this.stores?.app) {
+      this.stores.app.authRequestFailed = false;
     }
   };
 }

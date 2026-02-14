@@ -1,5 +1,5 @@
-const getItemMock = jest.fn(() => ({}));
-const setItemMock = jest.fn();
+const getItemMock = jest.fn<Record<string, unknown>, [string]>(() => ({}));
+const setItemMock = jest.fn<undefined, [string, any]>();
 
 let MessageTranslatorStore: any;
 
@@ -11,8 +11,8 @@ describe('WhatsApp interceptor script regression', () => {
     jest.doMock('mobx-localstorage', () => ({
       __esModule: true,
       default: {
-        getItem: (...args: any[]) => getItemMock(...args),
-        setItem: (...args: any[]) => setItemMock(...args),
+        getItem: (...args: [string]) => getItemMock(...args),
+        setItem: (...args: [string, any]) => setItemMock(...args),
       },
     }));
     // eslint-disable-next-line global-require

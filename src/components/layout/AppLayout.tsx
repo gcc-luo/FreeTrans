@@ -13,9 +13,9 @@ import injectSheet, { type WithStylesProps } from 'react-jss';
 import { mdiFlash, mdiPowerPlug } from '@mdi/js';
 import { Outlet } from 'react-router-dom';
 import { Component as BasicAuth } from '../../features/basicAuth';
+import { Component as MessageTranslatorPanel } from '../../features/messageTranslator';
 import { Component as PublishDebugInfo } from '../../features/publishDebugInfo';
 import { Component as QuickSwitch } from '../../features/quickSwitch';
-import { Component as MessageTranslatorPanel } from '../../features/messageTranslator';
 import { updateVersionParse } from '../../helpers/update-helpers';
 import InfoBar from '../ui/InfoBar';
 import ErrorBoundary from '../util/ErrorBoundary';
@@ -54,9 +54,8 @@ const transition = window?.matchMedia('(prefers-reduced-motion: no-preference)')
   ? 'transform 0.5s ease'
   : 'none';
 
-const styles = (theme: { workspaces: { drawer: { width: any } } }) => ({
+const styles = () => ({
   appContent: {
-    // width: `calc(100% + ${theme.workspaces.drawer.width}px)`,
     width: '100%',
     transition,
   },

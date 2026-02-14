@@ -9,6 +9,7 @@ import actions from './actions';
 import apiFactory from './api';
 import LocalApi from './api/server/LocalApi';
 import ServerApi from './api/server/ServerApi';
+import initMessageTranslator from './features/messageTranslator';
 import MenuFactory from './lib/Menu';
 import TouchBarFactory from './lib/TouchBar';
 import storeFactory from './stores';
@@ -39,7 +40,6 @@ window.addEventListener('load', () => {
   const touchBar = new TouchBarFactory(stores, actions);
 
   // Initialize message translator feature
-  const initMessageTranslator = require('./features/messageTranslator').default;
   initMessageTranslator(stores, actions);
 
   window['ferdium'] = {

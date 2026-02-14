@@ -43,6 +43,7 @@ import {
 import { removeServicePartitionDirectory } from '../../helpers/service-helpers';
 
 const debug = require('../../preload-safe-debug')('Ferdium:ServerApi');
+
 const GITHUB_RECIPE_CONTENTS_API =
   'https://api.github.com/repos/ferdium/ferdium-recipes/contents/recipes';
 
@@ -526,7 +527,9 @@ export default class ServerApi {
     await this._downloadGitHubDirectory(recipeContentsUrl, targetDirectory);
 
     if (!pathExistsSync(join(targetDirectory, 'package.json'))) {
-      throw new Error(`GitHub recipe '${recipeId}' does not contain package.json`);
+      throw new Error(
+        `GitHub recipe '${recipeId}' does not contain package.json`,
+      );
     }
   }
 
@@ -540,7 +543,7 @@ export default class ServerApi {
 
     const entries = await listingResponse.json();
     if (!Array.isArray(entries)) {
-      throw new Error('GitHub recipe response was not a directory listing');
+      throw new TypeError('GitHub recipe response was not a directory listing');
     }
 
     ensureDirSync(targetDirectory);
@@ -564,7 +567,10 @@ export default class ServerApi {
 
           const fileBlob = await fileResponse.blob();
           const fileBuffer = await fileBlob.arrayBuffer();
-          writeFileSync(join(targetDirectory, entry.name), Buffer.from(fileBuffer));
+          writeFileSync(
+            join(targetDirectory, entry.name),
+            Buffer.from(fileBuffer),
+          );
           return;
         }
 

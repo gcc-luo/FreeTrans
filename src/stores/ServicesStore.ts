@@ -156,7 +156,7 @@ export default class ServicesStore extends TypedStore {
         textLength: result.text?.length,
         error: result.error,
       });
-      
+
       const { serviceId, requestId, success, text, error } = result;
       if (serviceId && this.one(serviceId)?.webview) {
         debug('Forwarding translation result to webview:', serviceId);
@@ -891,6 +891,7 @@ export default class ServicesStore extends TypedStore {
 
       case 'translator:initialized': {
         const initData = args[0] || {};
+        // eslint-disable-next-line no-console
         console.log('[ServicesStore] Translator initialized for', serviceId, {
           serviceId: initData.serviceId || serviceId,
           settings: initData.settings,

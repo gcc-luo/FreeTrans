@@ -1,4 +1,11 @@
-﻿import { action, computed, makeObservable, observable, runInAction } from 'mobx';
+/* eslint-disable no-console */
+import {
+  action,
+  computed,
+  makeObservable,
+  observable,
+  runInAction,
+} from 'mobx';
 import localStorage from 'mobx-localstorage';
 import { ifUndefined } from '../../jsUtils';
 import type Reaction from '../../stores/lib/Reaction';
@@ -40,9 +47,7 @@ export default class MessageTranslatorStore extends FeatureStore {
     return localStorage.getItem('messageTranslator') || {};
   }
 
-  @computed get isPanelVisible() {
-    return true;
-  }
+  readonly isPanelVisible = true;
 
   @computed get panelWidth() {
     const width = ifUndefined<number>(
@@ -58,7 +63,9 @@ export default class MessageTranslatorStore extends FeatureStore {
       ...DEFAULT_TRANSLATOR_SETTINGS,
       ...serviceSettings,
       // 淇濈暀鐢ㄦ埛閫夋嫨鐨?translatorEngine锛屽鏋滄病鏈夎缃垯浣跨敤榛樿鍊?'Baidu'
-      translatorEngine: serviceSettings.translatorEngine || DEFAULT_TRANSLATOR_SETTINGS.translatorEngine,
+      translatorEngine:
+        serviceSettings.translatorEngine ||
+        DEFAULT_TRANSLATOR_SETTINGS.translatorEngine,
       // 纭繚 sendTranslation 榛樿鍚敤
       sendTranslation: serviceSettings.sendTranslation !== false,
     };
@@ -140,16 +147,19 @@ export default class MessageTranslatorStore extends FeatureStore {
     };
 
     if (service?.recipe?.id === 'whatsapp') {
-      console.log('[Ferdium Translator Store] Pushing settings to WhatsApp service:', {
-        serviceId,
-        settings: {
-          myLanguage: settings.myLanguage,
-          targetLanguage: settings.targetLanguage,
-          translatorEngine: settings.translatorEngine,
-          sendTranslation: settings.sendTranslation,
+      console.log(
+        '[Ferdium Translator Store] Pushing settings to WhatsApp service:',
+        {
+          serviceId,
+          settings: {
+            myLanguage: settings.myLanguage,
+            targetLanguage: settings.targetLanguage,
+            translatorEngine: settings.translatorEngine,
+            sendTranslation: settings.sendTranslation,
+          },
         },
-      });
-      
+      );
+
       debug('Injecting WhatsApp translator interceptor', {
         serviceId,
         settings: {
@@ -159,13 +169,16 @@ export default class MessageTranslatorStore extends FeatureStore {
           sendTranslation: settings.sendTranslation,
         },
       });
-      
+
       this._ensureWhatsAppInterceptor(serviceId)
         .then(status => {
-          console.log('[Ferdium Translator Store] WhatsApp interceptor injection result:', {
-            serviceId,
-            status,
-          });
+          console.log(
+            '[Ferdium Translator Store] WhatsApp interceptor injection result:',
+            {
+              serviceId,
+              status,
+            },
+          );
           debug('WhatsApp interceptor injection result', { serviceId, status });
           if (status === 'ok' || status === 'already') {
             const timer = this._whatsAppRetryTimers.get(serviceId);
@@ -177,11 +190,16 @@ export default class MessageTranslatorStore extends FeatureStore {
             if (status === 'ok') {
               this._injectedWhatsAppServices.add(serviceId);
             }
-            console.log('[Ferdium Translator Store] WhatsApp interceptor ready, sending config');
+            console.log(
+              '[Ferdium Translator Store] WhatsApp interceptor ready, sending config',
+            );
             return;
           }
 
-          console.warn('[Ferdium Translator Store] WhatsApp interceptor not ready:', status);
+          console.warn(
+            '[Ferdium Translator Store] WhatsApp interceptor not ready:',
+            status,
+          );
           debug('WhatsApp translator interceptor not ready yet', {
             serviceId,
             status,
@@ -189,7 +207,10 @@ export default class MessageTranslatorStore extends FeatureStore {
           this._scheduleWhatsAppInjectRetry(serviceId);
         })
         .catch(error => {
-          console.error('[Ferdium Translator Store] Failed to inject WhatsApp interceptor:', error);
+          console.error(
+            '[Ferdium Translator Store] Failed to inject WhatsApp interceptor:',
+            error,
+          );
           debug('Failed to inject WhatsApp interceptor', { serviceId, error });
           this._scheduleWhatsAppInjectRetry(serviceId);
         })
@@ -204,13 +225,24 @@ export default class MessageTranslatorStore extends FeatureStore {
 
   _scheduleWhatsAppInjectRetry = (serviceId: string, delayMs = 1000) => {
     if (!serviceId || this._whatsAppRetryTimers.has(serviceId)) {
-      console.log('[Ferdium Translator Store] Retry already scheduled for', serviceId);
+      console.log(
+        '[Ferdium Translator Store] Retry already scheduled for',
+        serviceId,
+      );
       return;
     }
 
-    console.log('[Ferdium Translator Store] Scheduling retry injection in', delayMs, 'ms for', serviceId);
+    console.log(
+      '[Ferdium Translator Store] Scheduling retry injection in',
+      delayMs,
+      'ms for',
+      serviceId,
+    );
     const timer = setTimeout(() => {
-      console.log('[Ferdium Translator Store] Retrying injection for', serviceId);
+      console.log(
+        '[Ferdium Translator Store] Retrying injection for',
+        serviceId,
+      );
       this._whatsAppRetryTimers.delete(serviceId);
       this._pushSettingsToService(serviceId);
     }, delayMs);
@@ -219,14 +251,20 @@ export default class MessageTranslatorStore extends FeatureStore {
   };
 
   async _ensureWhatsAppInterceptor(serviceId: string): Promise<string> {
-    console.log('[Ferdium Translator Store] _ensureWhatsAppInterceptor called for', serviceId);
-    
+    console.log(
+      '[Ferdium Translator Store] _ensureWhatsAppInterceptor called for',
+      serviceId,
+    );
+
     if (this._injectedWhatsAppServices.has(serviceId)) {
-      console.log('[Ferdium Translator Store] WhatsApp interceptor already injected for', serviceId);
+      console.log(
+        '[Ferdium Translator Store] WhatsApp interceptor already injected for',
+        serviceId,
+      );
       debug('WhatsApp interceptor already injected for', serviceId);
       return 'already';
     }
-    
+
     const service = this.stores?.services?.one?.(serviceId);
     console.log('[Ferdium Translator Store] Service check:', {
       serviceId,
@@ -235,9 +273,12 @@ export default class MessageTranslatorStore extends FeatureStore {
       hasExecuteJavaScript: !!service?.webview?.executeJavaScript,
       recipeId: service?.recipe?.id,
     });
-    
+
     if (!service?.webview?.executeJavaScript) {
-      console.warn('[Ferdium Translator Store] No webview available for', serviceId);
+      console.warn(
+        '[Ferdium Translator Store] No webview available for',
+        serviceId,
+      );
       debug('No webview available for', serviceId);
       return 'no-webview';
     }
@@ -251,7 +292,7 @@ export default class MessageTranslatorStore extends FeatureStore {
       translatorEngine: actualSettings.translatorEngine,
       sendTranslation: actualSettings.sendTranslation,
     });
-    
+
     const initialSettingsJson = JSON.stringify({
       myLanguage: actualSettings.myLanguage || 'zh',
       targetLanguage: actualSettings.targetLanguage || 'en',
@@ -2005,26 +2046,40 @@ export default class MessageTranslatorStore extends FeatureStore {
       })();
     `;
 
-    console.log('[Ferdium Translator Store] Executing WhatsApp interceptor script for', serviceId);
+    console.log(
+      '[Ferdium Translator Store] Executing WhatsApp interceptor script for',
+      serviceId,
+    );
     debug('Executing WhatsApp interceptor script for', serviceId);
-    
+
     let status: string;
     try {
       status = await service.webview.executeJavaScript(script, true);
-      console.log('[Ferdium Translator Store] Script execution result:', { serviceId, status });
+      console.log('[Ferdium Translator Store] Script execution result:', {
+        serviceId,
+        status,
+      });
     } catch (error) {
-      console.error('[Ferdium Translator Store] Script execution failed:', error);
+      console.error(
+        '[Ferdium Translator Store] Script execution failed:',
+        error,
+      );
       status = 'error';
     }
-    
+
     debug('WhatsApp interceptor injection result:', { serviceId, status });
-    
+
     if (status === 'ok' || status === 'already') {
       this._injectedWhatsAppServices.add(serviceId);
       debug('WhatsApp interceptor successfully injected for', serviceId);
     } else {
       this._injectedWhatsAppServices.delete(serviceId);
-      debug('WhatsApp interceptor injection failed for', serviceId, 'status:', status);
+      debug(
+        'WhatsApp interceptor injection failed for',
+        serviceId,
+        'status:',
+        status,
+      );
     }
 
     return status;
@@ -2110,7 +2165,10 @@ export default class MessageTranslatorStore extends FeatureStore {
       });
     }
 
-    if (message.action === 'translator:initialized' && message.data?.serviceId) {
+    if (
+      message.action === 'translator:initialized' &&
+      message.data?.serviceId
+    ) {
       this._pushSettingsToService(message.data.serviceId);
     }
   };

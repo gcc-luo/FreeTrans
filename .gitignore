@@ -389,3 +389,4 @@ server*.log
 
 # env
 .envrc
+.idea/

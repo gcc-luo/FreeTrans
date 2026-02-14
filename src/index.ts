@@ -41,7 +41,7 @@ import Settings from './electron/Settings';
 import handleDeepLink from './electron/deepLinking';
 import './electron/exception';
 // eslint-disable-next-line import/no-cycle
-import ipcApi from './electron/ipc-api';
+import ipcApi, { shutdownServer } from './electron/ipc-api';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
 import DBus from './lib/DBus';
@@ -56,7 +56,6 @@ import { openExternalUrl } from './helpers/url-helpers';
 import userAgent from './helpers/userAgent-helpers';
 import generatedTranslations from './i18n/translations';
 import { darkThemeGrayDarkest } from './themes/legacy';
-import { shutdownServer } from './electron/ipc-api';
 
 const debug = require('./preload-safe-debug')('Ferdium:App');
 
@@ -365,7 +364,7 @@ const createWindow = () => {
       }
     } else if (!overrideAppQuitForUpdate) {
       debug('Quitting the app');
-      // 优雅关闭内部服务器
+      // eslint-disable-next-line no-use-before-define,@typescript-eslint/no-use-before-define
       gracefulShutdown().then(() => {
         dbus.stop();
         app.quit();
@@ -538,7 +537,7 @@ app.on('ready', () => {
   createWindow();
 });
 
-// This is the worst possible implementation as the webview.webContents based callback doesn't work 🖕
+// This is the worst possible implementation as the webview.webContents based callback doesn't work 馃枙
 // TODO: rewrite to handle multiple login calls
 const noop = () => null;
 let authCallback = noop;
@@ -560,12 +559,12 @@ ipcMain.handle(
   async (_e, { text, translateToLanguage, translatorEngine, fromLanguage }) => {
     debug('IPC translate handle called:', {
       textLength: text?.length,
-      textPreview: text?.substring(0, 50),
+      textPreview: text?.slice(0, 50),
       translateToLanguage,
       translatorEngine,
       fromLanguage,
     });
-    
+
     try {
       const response = await translateTo(
         text,
@@ -575,14 +574,14 @@ ipcMain.handle(
           fromLanguage,
         },
       );
-      
+
       debug('IPC translate handle response:', {
         success: !response.error,
         textLength: response.text?.length,
-        textPreview: response.text?.substring(0, 50),
+        textPreview: response.text?.slice(0, 50),
         error: response.error,
       });
-      
+
       return response;
     } catch (error) {
       debug('IPC translate handle error:', error);
@@ -598,26 +597,26 @@ ipcMain.handle(
 ipcMain.on(
   'translator:translate-message',
   async (
-    event,
+    _event,
     { serviceId, requestId, text, fromLang, toLang, translatorEngine },
   ) => {
     try {
       debug('Translation request:', {
         serviceId,
         requestId,
-        text: text.substring(0, 50),
+        text: text.slice(0, 50),
         fromLang,
         toLang,
         translatorEngine,
       });
 
-      // 准备翻译选项，包括百度 API 配置
-      // translateTo 函数会从环境变量或内置配置中获取百度 API 密钥
+      // 鍑嗗缈昏瘧閫夐」锛屽寘鎷櫨搴?API 閰嶇疆
+      // translateTo 鍑芥暟浼氫粠鐜鍙橀噺鎴栧唴缃厤缃腑鑾峰彇鐧惧害 API 瀵嗛挜
       const translateOptions: any = {
         fromLanguage: fromLang,
       };
 
-      // 如果使用百度翻译，尝试从环境变量获取配置（translateTo 内部会使用内置配置作为后备）
+      // 濡傛灉浣跨敤鐧惧害缈昏瘧锛屽皾璇曚粠鐜鍙橀噺鑾峰彇閰嶇疆锛坱ranslateTo 鍐呴儴浼氫娇鐢ㄥ唴缃厤缃綔涓哄悗澶囷級
       if (translatorEngine === 'Baidu') {
         translateOptions.baiduAppId =
           process.env.BAIDU_TRANSLATE_APP_ID ||
@@ -877,7 +876,7 @@ app.on('window-all-closed', async () => {
   ) {
     debug('Window: all windows closed, quit app');
     if (!overrideAppQuitForUpdate) {
-      // 优雅关闭服务器后再退出
+      // eslint-disable-next-line no-use-before-define,@typescript-eslint/no-use-before-define
       await gracefulShutdown();
       // TODO: based on https://github.com/electron-userland/electron-builder/issues/6058#issuecomment-1130344017 (not yet tested since we don't have signed builds yet for macos)
       app.quit();
@@ -893,12 +892,11 @@ appEvents.on('install-update', () => {
 });
 
 /**
- * 优雅关闭应用：关闭内部服务器和其他资源
- */
+ * 浼橀泤鍏抽棴搴旂敤锛氬叧闂唴閮ㄦ湇鍔″櫒鍜屽叾浠栬祫婧? */
 async function gracefulShutdown(): Promise<void> {
   debug('Starting graceful shutdown...');
   try {
-    // 关闭内部服务器
+    // 鍏抽棴鍐呴儴鏈嶅姟鍣?
     await shutdownServer();
     debug('Internal server closed');
   } catch (error) {
@@ -921,7 +919,7 @@ app.on('before-quit', async event => {
   }
   if (selection === yesButtonIndex) {
     willQuitApp = true;
-    // 在退出前优雅关闭服务器
+    // 鍦ㄩ€€鍑哄墠浼橀泤鍏抽棴鏈嶅姟鍣?
     await gracefulShutdown();
   } else {
     event.preventDefault();
@@ -955,7 +953,7 @@ app.on('will-finish-launching', () => {
   });
 });
 
-// 处理进程信号（Ctrl+C, SIGTERM 等）
+// 澶勭悊杩涚▼淇″彿锛圕trl+C, SIGTERM 绛夛級
 process.on('SIGINT', async () => {
   debug('Received SIGINT, shutting down gracefully...');
   await gracefulShutdown();
@@ -968,7 +966,7 @@ process.on('SIGTERM', async () => {
   app.quit();
 });
 
-// 处理未捕获的异常
+// 澶勭悊鏈崟鑾风殑寮傚父
 process.on('uncaughtException', async error => {
   debug('Uncaught exception:', error);
   await gracefulShutdown();
@@ -977,7 +975,7 @@ process.on('uncaughtException', async error => {
 
 process.on('unhandledRejection', async (reason, promise) => {
   debug('Unhandled rejection at:', promise, 'reason:', reason);
-  // 不立即退出，只记录错误
+  // Keep running; only record the rejection.
 });
 
 app.on(

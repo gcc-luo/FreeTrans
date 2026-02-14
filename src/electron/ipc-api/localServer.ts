@@ -70,7 +70,7 @@ export default (params: { mainWindow: BrowserWindow }) => {
     debug('Restarting local server...');
     await shutdownServer();
     localServerStarted = false;
-    
+
     // 重新启动服务器
     setTimeout(async () => {
       try {
@@ -86,7 +86,7 @@ export default (params: { mainWindow: BrowserWindow }) => {
         );
         await server(userDataPath(), port, token);
         localServerStarted = true;
-        
+
         // 通知渲染进程服务器已重启
         params.mainWindow.webContents.send('localServerPort', {
           port,
@@ -100,4 +100,5 @@ export default (params: { mainWindow: BrowserWindow }) => {
 };
 
 // 导出关闭函数供主进程使用
-export { shutdownServer };
+
+export { shutdownServer } from '../../internal-server/start';

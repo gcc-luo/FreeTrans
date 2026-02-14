@@ -39,6 +39,7 @@ class ServiceWebview extends Component<IProps> {
             const message = e.message || '';
             // 如果是翻译相关的日志，直接输出到控制台
             if (message.includes('[Ferdium Translator]')) {
+              // eslint-disable-next-line no-console
               console.log('[WebView Console]', message);
             }
             debug('Service logged a message:', message);

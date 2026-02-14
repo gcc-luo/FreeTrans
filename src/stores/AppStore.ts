@@ -420,7 +420,7 @@ export default class AppStore extends TypedStore {
 
   _readSandboxes() {
     const sandboxesPath = userDataPath('config', 'sandboxes.json');
-    
+
     if (pathExistsSync(sandboxesPath)) {
       this.sandboxServices = readJsonSync(sandboxesPath);
     } else {

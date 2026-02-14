@@ -32,9 +32,9 @@ import {
   todosToggleShortcutKey,
   workspaceToggleShortcutKey,
 } from '../../environment';
+import { translatorActions } from '../../features/messageTranslator/actions';
 import { todosStore } from '../../features/todos';
 import { todoActions } from '../../features/todos/actions';
-import { translatorActions } from '../../features/messageTranslator/actions';
 import globalMessages from '../../i18n/globalMessages';
 import type Service from '../../models/Service';
 import type { RealStores } from '../../stores';
@@ -329,7 +329,7 @@ class Sidebar extends Component<IProps, IState> {
             <Icon icon={mdiCheckAll} size={1.5} />
           </button>
         ) : null}
-        {!isMenuCollapsed ? (
+        {isMenuCollapsed ? null : (
           <button
             type="button"
             onClick={() => {
@@ -350,7 +350,7 @@ class Sidebar extends Component<IProps, IState> {
           >
             <Icon icon={mdiTranslate} size={1.5} />
           </button>
-        ) : null}
+        )}
         {stores!.settings.all.app.isLockingFeatureEnabled ? (
           <button
             type="button"

@@ -1,9 +1,13 @@
-﻿import { mdiTranslate } from '@mdi/js';
+import { mdiTranslate } from '@mdi/js';
 import { inject, observer } from 'mobx-react';
 import { Component } from 'react';
-import { defineMessages, injectIntl, type WrappedComponentProps } from 'react-intl';
-import type { RealStores } from '../../stores';
+import {
+  type WrappedComponentProps,
+  defineMessages,
+  injectIntl,
+} from 'react-intl';
 import Icon from '../../components/ui/icon';
+import type { RealStores } from '../../stores';
 import { translatorActions } from './actions';
 
 const messages = defineMessages({
@@ -86,7 +90,9 @@ class MessageTranslatorPanel extends Component<Props> {
     if (!activeService) return null;
 
     const isOpen = Boolean(messageTranslator.isPanelVisible);
-    const serviceSettings = messageTranslator.getServiceSettings(activeService.id);
+    const serviceSettings = messageTranslator.getServiceSettings(
+      activeService.id,
+    );
 
     return (
       <aside
@@ -110,12 +116,12 @@ class MessageTranslatorPanel extends Component<Props> {
         <div className="translator-panel__body">
           <div className="translator-card">
             <div className="translator-setting-row">
-              <label>{intl.formatMessage(messages.translatorTool)}</label>
+              <span>{intl.formatMessage(messages.translatorTool)}</span>
               <input type="text" value="百度翻译" readOnly />
             </div>
 
             <div className="translator-setting-row">
-              <label>{intl.formatMessage(messages.myLanguage)}</label>
+              <span>{intl.formatMessage(messages.myLanguage)}</span>
               <select
                 value={serviceSettings.myLanguage}
                 onChange={e =>
@@ -133,7 +139,7 @@ class MessageTranslatorPanel extends Component<Props> {
             </div>
 
             <div className="translator-setting-row">
-              <label>{intl.formatMessage(messages.targetLanguage)}</label>
+              <span>{intl.formatMessage(messages.targetLanguage)}</span>
               <select
                 value={serviceSettings.targetLanguage}
                 onChange={e =>
@@ -142,11 +148,13 @@ class MessageTranslatorPanel extends Component<Props> {
                   })
                 }
               >
-                {LANGUAGE_OPTIONS.filter(opt => opt.value !== 'auto').map(opt => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
+                {LANGUAGE_OPTIONS.filter(opt => opt.value !== 'auto').map(
+                  opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ),
+                )}
               </select>
             </div>
 

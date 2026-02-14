@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { createHash } from 'node:crypto';
 
 interface BaiduTranslateConfig {
@@ -8,15 +9,16 @@ interface BaiduTranslateConfig {
 interface BaiduTranslateResponse {
   from?: string;
   to?: string;
-  trans_result?: Array<{
+  trans_result?: {
     src: string;
     dst: string;
-  }>;
+  }[];
   error_code?: string;
   error_msg?: string;
 }
 
-const BAIDU_TRANSLATE_API = 'https://fanyi-api.baidu.com/api/trans/vip/translate';
+const BAIDU_TRANSLATE_API =
+  'https://fanyi-api.baidu.com/api/trans/vip/translate';
 
 const LANGUAGE_CODE_MAP: Record<string, string> = {
   auto: 'auto',
@@ -66,7 +68,7 @@ export async function translateWithBaidu(
 ): Promise<{ text: string; error: boolean }> {
   console.log('[Baidu Translate] translateWithBaidu called:', {
     textLength: text?.length,
-    textPreview: text?.substring(0, 50),
+    textPreview: text?.slice(0, 50),
     fromLang,
     toLang,
     hasAppId: !!config?.appId,
@@ -99,7 +101,7 @@ export async function translateWithBaidu(
   const from = mapLanguageCode(fromLang, false);
   const to = mapLanguageCode(toLang, true);
   console.log('[Baidu Translate] Mapped language codes:', { from, to });
-  
+
   const salt = `${Date.now()}${Math.floor(Math.random() * 10_000)}`;
   const sign = buildSign(config.appId, query, salt, config.secretKey);
   console.log('[Baidu Translate] Request prepared:', {
@@ -127,7 +129,11 @@ export async function translateWithBaidu(
       body: body.toString(),
     });
 
-    console.log('[Baidu Translate] Response status:', response.status, response.statusText);
+    console.log(
+      '[Baidu Translate] Response status:',
+      response.status,
+      response.statusText,
+    );
     const data = (await response.json()) as BaiduTranslateResponse;
     console.log('[Baidu Translate] Response data:', {
       hasErrorCode: !!data.error_code,
@@ -163,7 +169,7 @@ export async function translateWithBaidu(
 
     console.log('[Baidu Translate] Translation result:', {
       translatedTextLength: translatedText.length,
-      translatedTextPreview: translatedText.substring(0, 50),
+      translatedTextPreview: translatedText.slice(0, 50),
     });
 
     if (!translatedText) {

@@ -8,7 +8,8 @@ import { translateWithBaidu } from './baidu-translate';
 const debug = require('../preload-safe-debug')('Ferdium:Translation');
 
 const MYMEMORY_TRANSLATE_API = 'https://api.mymemory.translated.net/get';
-const GOOGLE_TRANSLATE_API = 'https://translate.googleapis.com/translate_a/single';
+const GOOGLE_TRANSLATE_API =
+  'https://translate.googleapis.com/translate_a/single';
 const TRANSLATOR_ENGINE_BAIDU = 'Baidu';
 const BUILTIN_BAIDU_APP_ID = '20240726002108918';
 const BUILTIN_BAIDU_SECRET_KEY = 'vowgbu1GNKLkUSzX3Cbq';
@@ -30,9 +31,12 @@ const normalizeLanguageCode = (lang: string, fallback: string) => {
   return normalized || fallback;
 };
 
-const hasCjk = (value: string) => /[\u3400-\u9fff]/.test(value);
+const hasCjk = (value: string) => /[\u3400-\u9FFF]/.test(value);
 
-const isLikelyGarbageTranslation = (sourceText: string, translatedText: string) => {
+const isLikelyGarbageTranslation = (
+  sourceText: string,
+  translatedText: string,
+) => {
   const cleaned = String(translatedText || '').trim();
   if (!cleaned) return true;
   if (hasCjk(sourceText) && /^[A-Z]{2,5}$/.test(cleaned)) {
@@ -61,22 +65,22 @@ const fetchWithTimeout = async (
 const parseTranslatedText = (value: unknown): string =>
   String(value || '')
     .trim()
-    .replace(/^['"]+|['"]+$/g, '');
+    .replaceAll(/^["']+|["']+$/g, '');
 
 const resolveBaiduConfig = (options?: TranslateOptions): BaiduConfig | null => {
   const appId = String(
     options?.baiduAppId ||
-    process.env.BAIDU_TRANSLATE_APP_ID ||
-    process.env.BAIDU_APP_ID ||
-    BUILTIN_BAIDU_APP_ID ||
-    '',
+      process.env.BAIDU_TRANSLATE_APP_ID ||
+      process.env.BAIDU_APP_ID ||
+      BUILTIN_BAIDU_APP_ID ||
+      '',
   ).trim();
   const secretKey = String(
     options?.baiduSecretKey ||
-    process.env.BAIDU_TRANSLATE_SECRET_KEY ||
-    process.env.BAIDU_SECRET_KEY ||
-    BUILTIN_BAIDU_SECRET_KEY ||
-    '',
+      process.env.BAIDU_TRANSLATE_SECRET_KEY ||
+      process.env.BAIDU_SECRET_KEY ||
+      BUILTIN_BAIDU_SECRET_KEY ||
+      '',
   ).trim();
 
   if (!appId || !secretKey) return null;
@@ -147,7 +151,7 @@ async function translateViaLibre(
         'Content-Type': 'application/json',
       },
     },
-    8_000,
+    8000,
   );
 
   if (!res.ok) {
@@ -183,7 +187,7 @@ async function translateViaGoogle(
     {
       method: 'GET',
     },
-    8_000,
+    8000,
   );
 
   if (!res.ok) {
@@ -243,7 +247,7 @@ async function translateViaMyMemory(
     {
       method: 'GET',
     },
-    8_000,
+    8000,
   );
 
   if (!res.ok) {
@@ -251,7 +255,9 @@ async function translateViaMyMemory(
   }
 
   const response = await res.json();
-  const translatedText = parseTranslatedText(response?.responseData?.translatedText);
+  const translatedText = parseTranslatedText(
+    response?.responseData?.translatedText,
+  );
   if (!translatedText) {
     throw new Error('MyMemory empty result');
   }
@@ -269,7 +275,7 @@ export async function translateTo(
 ): Promise<{ text: string; error: boolean }> {
   debug('translateTo called:', {
     textLength: text?.length,
-    textPreview: text?.substring(0, 50),
+    textPreview: text?.slice(0, 50),
     translateToLanguage,
     translatorEngine,
     fromLanguage: options?.fromLanguage,
@@ -280,10 +286,15 @@ export async function translateTo(
   const errorText =
     'FERDIUM ERROR: An error occurred. Please select less text to translate or try again later.';
 
-  const fromLang = normalizeLanguageCode(options?.fromLanguage || 'auto', 'auto');
+  const fromLang = normalizeLanguageCode(
+    options?.fromLanguage || 'auto',
+    'auto',
+  );
   const toLang = normalizeLanguageCode(translateToLanguage || 'en', 'en');
   // 引擎名称不需要标准化，直接使用原始值（Baidu, Google, LibreTranslate）
-  const engine = String(translatorEngine || TRANSLATOR_ENGINE_LIBRETRANSLATE).trim();
+  const engine = String(
+    translatorEngine || TRANSLATOR_ENGINE_LIBRETRANSLATE,
+  ).trim();
 
   debug('translateTo normalized:', {
     fromLang,
@@ -291,7 +302,7 @@ export async function translateTo(
     engine,
   });
 
-  const attempts: Array<{ name: string; fn: () => Promise<string> }> = [];
+  const attempts: { name: string; fn: () => Promise<string> }[] = [];
 
   if (engine === TRANSLATOR_ENGINE_BAIDU) {
     debug('Using Baidu translator engine');
@@ -301,7 +312,7 @@ export async function translateTo(
       hasAppId: !!baiduConfig?.appId,
       hasSecretKey: !!baiduConfig?.secretKey,
     });
-    
+
     if (!baiduConfig) {
       debug('Baidu config missing, returning error');
       return {
@@ -322,18 +333,20 @@ export async function translateTo(
       },
     });
   } else if (engine === TRANSLATOR_ENGINE_GOOGLE) {
-    attempts.push({
-      name: 'Google',
-      fn: () => translateViaGoogle(text, fromLang, toLang),
-    });
-    attempts.push({
-      name: 'LibreTranslate',
-      fn: () => translateViaLibre(text, fromLang, toLang),
-    });
-    attempts.push({
-      name: 'MyMemory',
-      fn: () => translateViaMyMemory(text, fromLang, toLang),
-    });
+    attempts.push(
+      {
+        name: 'Google',
+        fn: () => translateViaGoogle(text, fromLang, toLang),
+      },
+      {
+        name: 'LibreTranslate',
+        fn: () => translateViaLibre(text, fromLang, toLang),
+      },
+      {
+        name: 'MyMemory',
+        fn: () => translateViaMyMemory(text, fromLang, toLang),
+      },
+    );
   } else {
     attempts.push({
       name: 'LibreTranslate',
@@ -356,6 +369,7 @@ export async function translateTo(
   let lastError: string | null = null;
   for (const attempt of attempts) {
     try {
+      // eslint-disable-next-line no-await-in-loop
       const translatedText = await attempt.fn();
       return { text: translatedText, error: false };
     } catch (error) {

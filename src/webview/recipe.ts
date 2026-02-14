@@ -119,10 +119,7 @@ contextBridge.exposeInMainWorld('ferdium', {
       ipcRenderer.invoke(channel, payload),
     on: (
       channel: string,
-      listener: (
-        event: Electron.IpcRendererEvent,
-        ...args: unknown[]
-      ) => void,
+      listener: (event: Electron.IpcRendererEvent, ...args: unknown[]) => void,
     ) => ipcRenderer.on(channel, listener),
   },
   setBadge: (
