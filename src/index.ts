@@ -433,7 +433,16 @@ const createWindow = () => {
   if (isMac) {
     // Note: Do not remove the extension. See https://github.com/ferdium/ferdium-app/issues/1755 for explanation
     import('./electron/macOSPermissions.js').then(macOSPermissions => {
-      const { askFormacOSPermissions } = macOSPermissions;
+      const askFormacOSPermissions =
+        macOSPermissions.askFormacOSPermissions ??
+        macOSPermissions.default?.askFormacOSPermissions;
+
+      if (typeof askFormacOSPermissions !== 'function') {
+        debug(
+          'Skipping macOS permission prompt because askFormacOSPermissions is unavailable',
+        );
+        return;
+      }
 
       setTimeout(() => askFormacOSPermissions(mainWindow!), ms('30s'));
     });
