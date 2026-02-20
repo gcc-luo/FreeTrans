@@ -96,12 +96,7 @@ describe('MessageTranslator dynamic peer language sync', () => {
     emitIncomingLanguage(store, 'en', 'ok', 'too-short');
     expect(store.getServiceSettings('service-1').targetLanguage).toBe('es');
 
-    emitIncomingLanguage(
-      store,
-      'pl',
-      'Dzisiaj jest bardzo goraco',
-      'unsupported-language',
-    );
+    emitIncomingLanguage(store, 'eo', 'Saluton mondo', 'unsupported-language');
     expect(store.getServiceSettings('service-1').targetLanguage).toBe('es');
 
     emitIncomingLanguage(
@@ -114,6 +109,13 @@ describe('MessageTranslator dynamic peer language sync', () => {
 
     emitIncomingLanguage(store, 'zh', 'wo zai zheli', 'same-as-my-language');
     expect(store.getServiceSettings('service-1').targetLanguage).toBe('es');
+  });
+
+  it('supports newly added official languages for dynamic peer sync (e.g. Cantonese)', () => {
+    const store = createStore();
+
+    emitIncomingLanguage(store, 'yue', '今日天氣幾好呀', 'turn-yue');
+    expect(store.getServiceSettings('service-1').targetLanguage).toBe('yue');
   });
 
   it('does not auto-sync peer language when receiveTranslation is disabled', () => {

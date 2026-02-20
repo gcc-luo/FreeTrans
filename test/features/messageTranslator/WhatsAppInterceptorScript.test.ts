@@ -56,7 +56,7 @@ describe('WhatsApp interceptor script regression', () => {
     expect(injectedScript).toContain("strategy: 'lexical.editorState'");
     expect(injectedScript).toContain('usedLexicalEditorState');
     expect(injectedScript).toContain(
-      'Lexical composer not synced after first set, skipping repeat set attempts',
+      'Lexical composer not synced after first set, waiting settle checks',
     );
     expect(injectedScript).toContain(
       'window.__ferdiumTranslatorRunCase = async targetText =>',
@@ -98,6 +98,20 @@ describe('WhatsApp interceptor script regression', () => {
       "const LOCAL_PREVIEW_ORIGINAL_ATTR = 'data-ferdium-local-preview-original';",
     );
     expect(injectedScript).toContain('const queueLocalPreviewDecoration = (');
+    const appendPreviewBlockIndex = injectedScript.indexOf(
+      'const appendOriginalPreviewBlock = (',
+    );
+    const ensureStyleInAppendIndex = injectedScript.indexOf(
+      'ensureLocalPreviewStyles();',
+      appendPreviewBlockIndex,
+    );
+    const addLocalClassIndex = injectedScript.indexOf(
+      "messageTextContainer.classList.add('ferdium-translator-local-translation');",
+      appendPreviewBlockIndex,
+    );
+    expect(appendPreviewBlockIndex).toBeGreaterThan(0);
+    expect(ensureStyleInAppendIndex).toBeGreaterThan(appendPreviewBlockIndex);
+    expect(ensureStyleInAppendIndex).toBeLessThan(addLocalClassIndex);
     expect(injectedScript).toContain(
       "return Array.from(document.querySelectorAll('div.message-out'));",
     );
@@ -124,6 +138,20 @@ describe('WhatsApp interceptor script regression', () => {
     expect(injectedScript).not.toContain('original + finalText');
     expect(injectedScript).not.toContain('finalText + "\\n" + original');
     expect(injectedScript).not.toContain('original + "\\n" + finalText');
+    expect(injectedScript).toContain('const translationChanged =');
+    expect(injectedScript).toContain(
+      "'[Ferdium Translator] Translation unchanged, sending original text'",
+    );
+    expect(injectedScript).toContain(
+      'await triggerNativeSend(preferClick, original, original, operationId);',
+    );
+    expect(injectedScript).toContain(
+      'const lexicalSettleDelays = [180, 320, 520];',
+    );
+    expect(injectedScript).toContain(
+      "reason: 'translate-lexical-dom-fallback'",
+    );
+    expect(injectedScript).toContain("reason: 'footer-composer-fallback'");
   });
 
   it('contains incoming translation observer, mismatch handling, and language validation flow', async () => {
@@ -141,6 +169,23 @@ describe('WhatsApp interceptor script regression', () => {
     expect(injectedScript).toContain(
       'const SUPPORTED_SETTING_LANGUAGES = new Set([',
     );
+    expect(injectedScript).toContain("'yue'");
+    expect(injectedScript).toContain("'wyw'");
+    expect(injectedScript).toContain("'th'");
+    expect(injectedScript).toContain("'ar'");
+    expect(injectedScript).toContain("'el'");
+    expect(injectedScript).toContain("'nl'");
+    expect(injectedScript).toContain("'pl'");
+    expect(injectedScript).toContain("'bg'");
+    expect(injectedScript).toContain("'et'");
+    expect(injectedScript).toContain("'da'");
+    expect(injectedScript).toContain("'fi'");
+    expect(injectedScript).toContain("'cs'");
+    expect(injectedScript).toContain("'ro'");
+    expect(injectedScript).toContain("'sl'");
+    expect(injectedScript).toContain("'sv'");
+    expect(injectedScript).toContain("'hu'");
+    expect(injectedScript).toContain("'vi'");
     expect(injectedScript).toContain(
       'const toSettingsLanguageCode = value => {',
     );
@@ -211,6 +256,30 @@ describe('WhatsApp interceptor script regression', () => {
     expect(injectedScript).toContain("scheduleIncomingScan('bootstrap', 380);");
     expect(injectedScript).toContain(
       "scheduleOutgoingHistoryScan('bootstrap', 420);",
+    );
+    expect(injectedScript).toContain(
+      'const scheduleBootstrapFormattingPass = (',
+    );
+    expect(injectedScript).toContain(
+      "scheduleBootstrapFormattingPass('bootstrap');",
+    );
+    expect(injectedScript).toContain(
+      "scheduleBootstrapFormattingPass('configure-update');",
+    );
+    expect(injectedScript).not.toContain(
+      "scheduleIncomingScan(reason + ':incoming:' + delayMs, 0);",
+    );
+    expect(injectedScript).not.toContain(
+      "scheduleIncomingScan(reason + ':incoming', 80);",
+    );
+    expect(injectedScript).toContain('const getActiveChatSignature = () => {');
+    expect(injectedScript).toContain(
+      "const refreshFormattingForActiveChat = (reason = 'active-chat') => {",
+    );
+    expect(injectedScript).toContain('const startActiveChatWatcher = () => {');
+    expect(injectedScript).toContain('startActiveChatWatcher();');
+    expect(injectedScript).toContain(
+      "refreshFormattingForActiveChat('visibility-change');",
     );
   });
 });

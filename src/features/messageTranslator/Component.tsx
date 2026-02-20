@@ -9,6 +9,11 @@ import {
 import Icon from '../../components/ui/icon';
 import type { RealStores } from '../../stores';
 import { translatorActions } from './actions';
+import {
+  getMyLanguageOptions,
+  getTargetLanguageOptions,
+  normalizeVisibleLanguageValue,
+} from './language-options';
 
 const messages = defineMessages({
   title: {
@@ -26,6 +31,10 @@ const messages = defineMessages({
   targetLanguage: {
     id: 'translator.panel.targetLanguage',
     defaultMessage: '对方语言',
+  },
+  languageSearchPlaceholder: {
+    id: 'translator.panel.language.search',
+    defaultMessage: '搜索语种',
   },
   sendTranslation: {
     id: 'translator.panel.sendTranslation',
@@ -49,25 +58,26 @@ const messages = defineMessages({
   },
 });
 
-const LANGUAGE_OPTIONS = [
-  { value: 'auto', label: '自动' },
-  { value: 'zh', label: '中文' },
-  { value: 'en', label: '英语' },
-  { value: 'ja', label: '日语' },
-  { value: 'ko', label: '韩语' },
-  { value: 'de', label: '德语' },
-  { value: 'fr', label: '法语' },
-  { value: 'es', label: '西班牙语' },
-  { value: 'ru', label: '俄语' },
-];
-
 interface Props extends WrappedComponentProps {
   stores?: RealStores;
 }
 
+interface State {
+  myLanguageSearch: string;
+  targetLanguageSearch: string;
+}
+
 @inject('stores')
 @observer
-class MessageTranslatorPanel extends Component<Props> {
+class MessageTranslatorPanel extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      myLanguageSearch: '',
+      targetLanguageSearch: '',
+    };
+  }
+
   updateSettings(serviceId: string, patch: Record<string, unknown>) {
     translatorActions.updateSettings({
       serviceId,
@@ -106,6 +116,42 @@ class MessageTranslatorPanel extends Component<Props> {
       activeService.id,
     );
     const panelTheme = serviceSettings.panelTheme === 'dark' ? 'dark' : 'light';
+    const allMyLanguageOptions = getMyLanguageOptions('');
+    const allTargetLanguageOptions = getTargetLanguageOptions('');
+    let myLanguageOptions = getMyLanguageOptions(this.state.myLanguageSearch);
+    let targetLanguageOptions = getTargetLanguageOptions(
+      this.state.targetLanguageSearch,
+    );
+    const myLanguageValue = normalizeVisibleLanguageValue(
+      serviceSettings.myLanguage,
+      allMyLanguageOptions,
+      'auto',
+    );
+    const targetLanguageValue = normalizeVisibleLanguageValue(
+      serviceSettings.targetLanguage,
+      allTargetLanguageOptions,
+      'en',
+    );
+    if (!myLanguageOptions.some(option => option.value === myLanguageValue)) {
+      const selectedOption = allMyLanguageOptions.find(
+        option => option.value === myLanguageValue,
+      );
+      if (selectedOption) {
+        myLanguageOptions = [selectedOption, ...myLanguageOptions];
+      }
+    }
+    if (
+      !targetLanguageOptions.some(
+        option => option.value === targetLanguageValue,
+      )
+    ) {
+      const selectedOption = allTargetLanguageOptions.find(
+        option => option.value === targetLanguageValue,
+      );
+      if (selectedOption) {
+        targetLanguageOptions = [selectedOption, ...targetLanguageOptions];
+      }
+    }
 
     return (
       <aside
@@ -138,42 +184,66 @@ class MessageTranslatorPanel extends Component<Props> {
               <input type="text" value="百度翻译" readOnly />
             </div>
 
-            <div className="translator-setting-row">
+            <div className="translator-setting-row translator-setting-row--language">
               <span>{intl.formatMessage(messages.myLanguage)}</span>
-              <select
-                value={serviceSettings.myLanguage}
-                onChange={e =>
-                  this.updateSettings(activeService.id, {
-                    myLanguage: e.target.value,
-                  })
-                }
-              >
-                {LANGUAGE_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="translator-setting-row">
-              <span>{intl.formatMessage(messages.targetLanguage)}</span>
-              <select
-                value={serviceSettings.targetLanguage}
-                onChange={e =>
-                  this.updateSettings(activeService.id, {
-                    targetLanguage: e.target.value,
-                  })
-                }
-              >
-                {LANGUAGE_OPTIONS.filter(opt => opt.value !== 'auto').map(
-                  opt => (
+              <div className="translator-language-field">
+                <input
+                  type="text"
+                  className="translator-language-search"
+                  value={this.state.myLanguageSearch}
+                  placeholder={intl.formatMessage(
+                    messages.languageSearchPlaceholder,
+                  )}
+                  onChange={e =>
+                    this.setState({ myLanguageSearch: e.target.value })
+                  }
+                />
+                <select
+                  value={myLanguageValue}
+                  onChange={e =>
+                    this.updateSettings(activeService.id, {
+                      myLanguage: e.target.value,
+                    })
+                  }
+                >
+                  {myLanguageOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
-                  ),
-                )}
-              </select>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="translator-setting-row translator-setting-row--language">
+              <span>{intl.formatMessage(messages.targetLanguage)}</span>
+              <div className="translator-language-field">
+                <input
+                  type="text"
+                  className="translator-language-search"
+                  value={this.state.targetLanguageSearch}
+                  placeholder={intl.formatMessage(
+                    messages.languageSearchPlaceholder,
+                  )}
+                  onChange={e =>
+                    this.setState({ targetLanguageSearch: e.target.value })
+                  }
+                />
+                <select
+                  value={targetLanguageValue}
+                  onChange={e =>
+                    this.updateSettings(activeService.id, {
+                      targetLanguage: e.target.value,
+                    })
+                  }
+                >
+                  {targetLanguageOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="translator-setting-row">

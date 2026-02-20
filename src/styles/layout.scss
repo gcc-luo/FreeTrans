@@ -247,6 +247,15 @@ body.win32:not(.isFullScreen) .app .app__content {
   font-size: 12px;
 }
 
+.translator-setting-row--language {
+  align-items: start;
+}
+
+.translator-language-field {
+  display: grid;
+  row-gap: 4px;
+}
+
 .translator-setting-row select,
 .translator-setting-row input {
   height: 28px;
@@ -256,6 +265,10 @@ body.win32:not(.isFullScreen) .app .app__content {
   color: var(--translator-select-color);
   padding: 0 8px;
   font-size: 12px;
+}
+
+.translator-setting-row .translator-language-search {
+  height: 24px;
 }
 
 .translator-toggle-row {

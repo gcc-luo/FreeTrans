@@ -333,7 +333,7 @@ export default class MessageTranslatorStore extends FeatureStore {
         if (!ipcRenderer || typeof ipcRenderer.sendToHost !== 'function') {
           return 'no-ipc';
         }
-        const interceptorVersion = '2026-02-14-v13';
+        const interceptorVersion = '2026-02-20-v16';
         if (
           window.__ferdiumTranslatorInterceptorLoaded &&
           window.__ferdiumTranslatorInterceptorVersion === interceptorVersion
@@ -696,14 +696,31 @@ export default class MessageTranslatorStore extends FeatureStore {
         const SUPPORTED_SETTING_LANGUAGES = new Set([
           'zh',
           'en',
+          'yue',
+          'wyw',
           'ja',
           'ko',
-          'de',
           'fr',
           'es',
+          'th',
+          'ar',
           'ru',
           'pt',
+          'de',
           'it',
+          'el',
+          'nl',
+          'pl',
+          'bg',
+          'et',
+          'da',
+          'fi',
+          'cs',
+          'ro',
+          'sl',
+          'sv',
+          'hu',
+          'vi',
         ]);
 
         const toSettingsLanguageCode = value => {
@@ -917,6 +934,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           const normalizedOriginal = String(originalText || '').trim();
           if (!normalizedTranslated || !normalizedOriginal) return false;
 
+          ensureLocalPreviewStyles();
           messageTextContainer.classList.add('ferdium-translator-local-translation');
           messageTextContainer.setAttribute(LOCAL_PREVIEW_ATTR, '1');
           messageTextContainer.setAttribute(
@@ -1178,6 +1196,65 @@ export default class MessageTranslatorStore extends FeatureStore {
             state.outgoingHistoryScanTimer = 0;
             restoreOutgoingHistoryPreview(reason);
           }, Math.max(0, Number(delayMs) || 0));
+        };
+
+        const scheduleBootstrapFormattingPass = (
+          reason = 'bootstrap',
+          delays = [0, 260, 720, 1400, 2400, 3800],
+        ) => {
+          for (const delay of delays) {
+            const delayMs = Math.max(0, Number(delay) || 0);
+            const timer = setTimeout(() => {
+              if (!isActiveInterceptorInstance()) return;
+              scheduleOutgoingHistoryScan(reason + ':outgoing:' + delayMs, 0);
+            }, delayMs);
+            registerCleanup(() => {
+              clearTimeout(timer);
+            });
+          }
+        };
+
+        const getActiveChatSignature = () => {
+          try {
+            const path = String(window.location?.pathname || '');
+            const search = String(window.location?.search || '');
+            const hash = String(window.location?.hash || '');
+            const headerTitleNode = document.querySelector(
+              '#main header [title]',
+            );
+            const headerTitle = String(
+              headerTitleNode?.getAttribute?.('title') ||
+                headerTitleNode?.textContent ||
+                '',
+            )
+              .trim()
+              .slice(0, 120);
+            const mainPane = document.querySelector('#main');
+            const mainPaneState = mainPane ? 'main-ready' : 'main-missing';
+            return [path, search, hash, headerTitle, mainPaneState].join('|');
+          } catch (_error) {
+            return '';
+          }
+        };
+
+        let activeChatSignature = '';
+        const refreshFormattingForActiveChat = (reason = 'active-chat') => {
+          if (!isActiveInterceptorInstance()) return;
+          const nextSignature = getActiveChatSignature();
+          if (!nextSignature) return;
+          if (nextSignature === activeChatSignature) return;
+          activeChatSignature = nextSignature;
+          scheduleOutgoingHistoryScan(reason + ':outgoing', 80);
+        };
+
+        const startActiveChatWatcher = () => {
+          refreshFormattingForActiveChat('active-chat-bootstrap');
+          const interval = setInterval(() => {
+            refreshFormattingForActiveChat('active-chat-change');
+          }, 900);
+          registerCleanup(() => {
+            clearInterval(interval);
+          });
         };
 
         const isTextLooselyMatched = (actual, expected) => {
@@ -1850,6 +1927,12 @@ export default class MessageTranslatorStore extends FeatureStore {
           const comparableOriginal = toComparableText(originalValue);
 
           if (!comparableAfter) return false;
+          if (
+            comparableAfter === comparableOriginal &&
+            comparableFinal === comparableOriginal
+          ) {
+            return true;
+          }
           if (comparableAfter === comparableOriginal) return false;
           if (!hasCjkChars(finalValue) && hasCjkChars(afterValue)) return false;
           if (comparableAfter === comparableFinal) return true;
@@ -1867,29 +1950,58 @@ export default class MessageTranslatorStore extends FeatureStore {
         const forceSyncViaFooterTextarea = (text, originalText, operationId = 'no-op') => {
           const footer = document.querySelector('footer');
           const textarea = footer?.querySelector?.('textarea');
-          if (!(textarea instanceof HTMLTextAreaElement)) {
-            return false;
+          if (textarea instanceof HTMLTextAreaElement) {
+            try {
+              console.log('[Ferdium Translator] Trying textarea fallback sync', {
+                operationId,
+              });
+            } catch (_e) {}
+            setComposerText(textarea, text, {
+              operationId,
+              reason: 'footer-textarea-fallback',
+              originalText,
+            });
+            const after = getComposerText(textarea);
+            const ok = isComposerSynced(after, text, originalText);
+            try {
+              console.log('[Ferdium Translator] Textarea fallback result:', {
+                operationId,
+                ok,
+                after: after?.substring(0, 120),
+              });
+            } catch (_e) {}
+            if (ok) return true;
           }
-          try {
-            console.log('[Ferdium Translator] Trying textarea fallback sync', {
+
+          const footerComposer = footer?.querySelector?.(
+            '[contenteditable="true"][role="textbox"], [contenteditable="true"][data-tab], [contenteditable="true"]',
+          );
+          if (footerComposer instanceof Element) {
+            try {
+              console.log('[Ferdium Translator] Trying footer composer fallback sync', {
+                operationId,
+              });
+            } catch (_e) {}
+            setComposerText(footerComposer, text, {
               operationId,
+              reason: 'footer-composer-fallback',
+              originalText,
+              allowLexicalDomMutation: true,
+              forceDomReplace: true,
             });
-          } catch (_e) {}
-          setComposerText(textarea, text, {
-            operationId,
-            reason: 'footer-textarea-fallback',
-            originalText,
-          });
-          const after = getComposerText(textarea);
-          const ok = isComposerSynced(after, text, originalText);
-          try {
-            console.log('[Ferdium Translator] Textarea fallback result:', {
-              operationId,
-              ok,
-              after: after?.substring(0, 120),
-            });
-          } catch (_e) {}
-          return ok;
+            const after = getComposerText(footerComposer);
+            const ok = isComposerSynced(after, text, originalText);
+            try {
+              console.log('[Ferdium Translator] Footer composer fallback result:', {
+                operationId,
+                ok,
+                after: after?.substring(0, 120),
+              });
+            } catch (_e) {}
+            return ok;
+          }
+
+          return false;
         };
 
         const findSendButton = () => {
@@ -2865,6 +2977,23 @@ export default class MessageTranslatorStore extends FeatureStore {
                 outgoingValidation,
               }),
             );
+            const translationChanged =
+              toComparableText(finalText) !== toComparableText(original);
+            if (!translationChanged) {
+              console.log(
+                '[Ferdium Translator] Translation unchanged, sending original text',
+                {
+                  operationId,
+                },
+              );
+              state.bypassSendUntil = Date.now() + 2400;
+              await triggerNativeSend(preferClick, original, original, operationId);
+              console.log(
+                '[Ferdium Translator] ===== Translation and send completed (unchanged) =====',
+                { operationId },
+              );
+              return;
+            }
             console.log('[Ferdium Translator] Setting composer text to:', finalText.substring(0, 100));
             let activeComposer = composer;
             let isLexicalFlow =
@@ -2881,9 +3010,30 @@ export default class MessageTranslatorStore extends FeatureStore {
             if (!isComposerSynced(afterSet, finalText, original)) {
               if (isLexicalFlow) {
                 console.log(
-                  '[Ferdium Translator] Lexical composer not synced after first set, skipping repeat set attempts',
+                  '[Ferdium Translator] Lexical composer not synced after first set, waiting settle checks',
                   { operationId },
                 );
+                const lexicalSettleDelays = [180, 320, 520];
+                for (const settleDelay of lexicalSettleDelays) {
+                  await sleep(settleDelay);
+                  activeComposer = readComposer() || activeComposer;
+                  afterSet = getComposerText(activeComposer);
+                  if (isComposerSynced(afterSet, finalText, original)) {
+                    break;
+                  }
+                }
+                if (!isComposerSynced(afterSet, finalText, original)) {
+                  activeComposer = readComposer() || activeComposer;
+                  setComposerText(activeComposer, finalText, {
+                    operationId,
+                    reason: 'translate-lexical-dom-fallback',
+                    originalText: original,
+                    allowLexicalDomMutation: true,
+                    forceDomReplace: true,
+                  });
+                  await sleep(260);
+                  afterSet = getComposerText(activeComposer);
+                }
               } else {
                 console.log('[Ferdium Translator] Not synced, retrying with DOM replace');
                 activeComposer = readComposer() || activeComposer;
@@ -3099,6 +3249,8 @@ export default class MessageTranslatorStore extends FeatureStore {
         ensureOutgoingHistoryObserver();
         scheduleIncomingScan('bootstrap', 380);
         scheduleOutgoingHistoryScan('bootstrap', 420);
+        scheduleBootstrapFormattingPass('bootstrap');
+        startActiveChatWatcher();
         addDomListener(
           document,
           'visibilitychange',
@@ -3106,6 +3258,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             if (document.visibilityState === 'visible') {
               scheduleIncomingScan('visibility-change', 160);
               scheduleOutgoingHistoryScan('visibility-change', 220);
+              refreshFormattingForActiveChat('visibility-change');
             }
           },
           true,
@@ -3141,6 +3294,8 @@ export default class MessageTranslatorStore extends FeatureStore {
             }
             ensureOutgoingHistoryObserver();
             scheduleOutgoingHistoryScan('configure-update', 260);
+            scheduleBootstrapFormattingPass('configure-update');
+            refreshFormattingForActiveChat('configure-update');
           }
         };
         addIpcListener('translator:configure', handleTranslatorConfigure);
@@ -3345,14 +3500,31 @@ export default class MessageTranslatorStore extends FeatureStore {
     const supported = new Set([
       'zh',
       'en',
+      'yue',
+      'wyw',
       'ja',
       'ko',
-      'de',
       'fr',
       'es',
+      'th',
+      'ar',
       'ru',
       'pt',
+      'de',
       'it',
+      'el',
+      'nl',
+      'pl',
+      'bg',
+      'et',
+      'da',
+      'fi',
+      'cs',
+      'ro',
+      'sl',
+      'sv',
+      'hu',
+      'vi',
     ]);
     return supported.has(normalized) ? normalized : '';
   };
@@ -3398,6 +3570,13 @@ export default class MessageTranslatorStore extends FeatureStore {
       sampleSize <= 24
     ) {
       shouldPreferInferredLanguage = true;
+    }
+    if (
+      shouldPreferInferredLanguage &&
+      inferredLanguage === 'zh' &&
+      (detectedPeerLanguage === 'yue' || detectedPeerLanguage === 'wyw')
+    ) {
+      shouldPreferInferredLanguage = false;
     }
     let nextPeerLanguage = detectedPeerLanguage || inferredLanguage;
     if (shouldPreferInferredLanguage) {
