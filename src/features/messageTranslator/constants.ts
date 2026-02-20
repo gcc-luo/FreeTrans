@@ -7,6 +7,7 @@ export const DEFAULT_TRANSLATOR_SETTINGS = {
   myLanguage: 'zh',
   targetLanguage: 'en',
   translatorEngine: 'Baidu',
+  panelTheme: 'light',
   sendTranslation: true,
   receiveTranslation: true,
   showOriginalText: false,

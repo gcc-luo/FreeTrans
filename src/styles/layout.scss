@@ -135,17 +135,42 @@ body.win32:not(.isFullScreen) .app .app__content {
 }
 
 .translator-panel {
+  --translator-panel-bg: #f3f4f6;
+  --translator-panel-border: #d6d9de;
+  --translator-header-bg: #e2ebf8;
+  --translator-text-color: #1f2937;
+  --translator-card-bg: #f6f7f8;
+  --translator-card-border: #d9dde3;
+  --translator-select-bg: #eceff3;
+  --translator-select-border: #cfd5dd;
+  --translator-select-color: #5b6472;
+  --translator-switch-bg: #d1d5db;
+  --translator-switch-on-bg: #7cb2f4;
   width: 0;
   flex: 0 0 0;
   overflow: hidden;
-  background: #f3f4f6;
-  border-left: 1px solid #d6d9de;
+  background: var(--translator-panel-bg);
+  border-left: 1px solid var(--translator-panel-border);
   transition:
     width 0.2s ease,
     flex-basis 0.2s ease;
   z-index: 250;
   display: flex;
   flex-direction: column;
+}
+
+.translator-panel--theme-dark {
+  --translator-panel-bg: #1f2329;
+  --translator-panel-border: #3a4048;
+  --translator-header-bg: #2b313a;
+  --translator-text-color: #e5e7eb;
+  --translator-card-bg: #262c34;
+  --translator-card-border: #3e4550;
+  --translator-select-bg: #2f3742;
+  --translator-select-border: #4b5563;
+  --translator-select-color: #d1d5db;
+  --translator-switch-bg: #6b7280;
+  --translator-switch-on-bg: #3b82f6;
 }
 
 .translator-panel.is-open {
@@ -158,8 +183,8 @@ body.win32:not(.isFullScreen) .app .app__content {
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
-  border-bottom: 1px solid #d6d9de;
-  background: #e2ebf8;
+  border-bottom: 1px solid var(--translator-panel-border);
+  background: var(--translator-header-bg);
   height: auto;
   flex: 0 0 auto;
 }
@@ -174,7 +199,14 @@ body.win32:not(.isFullScreen) .app .app__content {
   align-items: center;
   font-weight: 500;
   font-size: 13px;
+  color: var(--translator-text-color);
   height: auto;
+}
+
+.translator-panel__logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 .translator-panel__body {
@@ -188,8 +220,8 @@ body.win32:not(.isFullScreen) .app .app__content {
 }
 
 .translator-card {
-  background: #f6f7f8;
-  border: 1px solid #d9dde3;
+  background: var(--translator-card-bg);
+  border: 1px solid var(--translator-card-border);
   border-radius: 6px;
   padding: 8px;
   margin: 0;
@@ -206,16 +238,22 @@ body.win32:not(.isFullScreen) .app .app__content {
 }
 
 .translator-setting-row label {
-  color: #1f2937;
+  color: var(--translator-text-color);
   font-size: 12px;
 }
 
-.translator-setting-row select {
+.translator-setting-row span {
+  color: var(--translator-text-color);
+  font-size: 12px;
+}
+
+.translator-setting-row select,
+.translator-setting-row input {
   height: 28px;
-  border: 1px solid #cfd5dd;
+  border: 1px solid var(--translator-select-border);
   border-radius: 4px;
-  background: #eceff3;
-  color: #5b6472;
+  background: var(--translator-select-bg);
+  color: var(--translator-select-color);
   padding: 0 8px;
   font-size: 12px;
 }
@@ -230,7 +268,7 @@ body.win32:not(.isFullScreen) .app .app__content {
 }
 
 .translator-toggle-row span {
-  color: #1f2937;
+  color: var(--translator-text-color);
   font-size: 12px;
 }
 
@@ -239,14 +277,14 @@ body.win32:not(.isFullScreen) .app .app__content {
   height: 20px;
   border-radius: 999px;
   border: none;
-  background: #d1d5db;
+  background: var(--translator-switch-bg);
   position: relative;
   justify-self: start;
   transition: background 0.2s ease;
 }
 
 .translator-switch.is-on {
-  background: #7cb2f4;
+  background: var(--translator-switch-on-bg);
 }
 
 .translator-switch__thumb {

@@ -35,6 +35,18 @@ const messages = defineMessages({
     id: 'translator.panel.receiveTranslation',
     defaultMessage: '接收翻译',
   },
+  panelTheme: {
+    id: 'translator.panel.theme',
+    defaultMessage: '界面主题',
+  },
+  themeLight: {
+    id: 'translator.panel.theme.light',
+    defaultMessage: '默认白色',
+  },
+  themeDark: {
+    id: 'translator.panel.theme.dark',
+    defaultMessage: '暗黑色',
+  },
 });
 
 const LANGUAGE_OPTIONS = [
@@ -93,10 +105,11 @@ class MessageTranslatorPanel extends Component<Props> {
     const serviceSettings = messageTranslator.getServiceSettings(
       activeService.id,
     );
+    const panelTheme = serviceSettings.panelTheme === 'dark' ? 'dark' : 'light';
 
     return (
       <aside
-        className={`translator-panel ${isOpen ? 'is-open' : ''}`}
+        className={`translator-panel translator-panel--theme-${panelTheme} ${isOpen ? 'is-open' : ''}`}
         style={
           isOpen
             ? {
@@ -108,6 +121,11 @@ class MessageTranslatorPanel extends Component<Props> {
       >
         <div className="translator-panel__header translator-panel__header--compact">
           <div className="translator-panel__title">
+            <img
+              src="./assets/images/logo-beard-only.svg"
+              alt="Translator logo"
+              className="translator-panel__logo"
+            />
             <Icon icon={mdiTranslate} size={0.9} />
             <span>{intl.formatMessage(messages.title)}</span>
           </div>
@@ -155,6 +173,25 @@ class MessageTranslatorPanel extends Component<Props> {
                     </option>
                   ),
                 )}
+              </select>
+            </div>
+
+            <div className="translator-setting-row">
+              <span>{intl.formatMessage(messages.panelTheme)}</span>
+              <select
+                value={panelTheme}
+                onChange={e =>
+                  this.updateSettings(activeService.id, {
+                    panelTheme: e.target.value,
+                  })
+                }
+              >
+                <option value="light">
+                  {intl.formatMessage(messages.themeLight)}
+                </option>
+                <option value="dark">
+                  {intl.formatMessage(messages.themeDark)}
+                </option>
               </select>
             </div>
 
