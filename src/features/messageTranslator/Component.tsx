@@ -32,10 +32,6 @@ const messages = defineMessages({
     id: 'translator.panel.targetLanguage',
     defaultMessage: '对方语言',
   },
-  languageSearchPlaceholder: {
-    id: 'translator.panel.language.search',
-    defaultMessage: '搜索语种',
-  },
   sendTranslation: {
     id: 'translator.panel.sendTranslation',
     defaultMessage: '发送翻译',
@@ -62,22 +58,9 @@ interface Props extends WrappedComponentProps {
   stores?: RealStores;
 }
 
-interface State {
-  myLanguageSearch: string;
-  targetLanguageSearch: string;
-}
-
 @inject('stores')
 @observer
-class MessageTranslatorPanel extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      myLanguageSearch: '',
-      targetLanguageSearch: '',
-    };
-  }
-
+class MessageTranslatorPanel extends Component<Props> {
   updateSettings(serviceId: string, patch: Record<string, unknown>) {
     translatorActions.updateSettings({
       serviceId,
@@ -118,10 +101,8 @@ class MessageTranslatorPanel extends Component<Props, State> {
     const panelTheme = serviceSettings.panelTheme === 'dark' ? 'dark' : 'light';
     const allMyLanguageOptions = getMyLanguageOptions('');
     const allTargetLanguageOptions = getTargetLanguageOptions('');
-    let myLanguageOptions = getMyLanguageOptions(this.state.myLanguageSearch);
-    let targetLanguageOptions = getTargetLanguageOptions(
-      this.state.targetLanguageSearch,
-    );
+    const myLanguageOptions = allMyLanguageOptions;
+    const targetLanguageOptions = allTargetLanguageOptions;
     const myLanguageValue = normalizeVisibleLanguageValue(
       serviceSettings.myLanguage,
       allMyLanguageOptions,
@@ -132,26 +113,6 @@ class MessageTranslatorPanel extends Component<Props, State> {
       allTargetLanguageOptions,
       'en',
     );
-    if (!myLanguageOptions.some(option => option.value === myLanguageValue)) {
-      const selectedOption = allMyLanguageOptions.find(
-        option => option.value === myLanguageValue,
-      );
-      if (selectedOption) {
-        myLanguageOptions = [selectedOption, ...myLanguageOptions];
-      }
-    }
-    if (
-      !targetLanguageOptions.some(
-        option => option.value === targetLanguageValue,
-      )
-    ) {
-      const selectedOption = allTargetLanguageOptions.find(
-        option => option.value === targetLanguageValue,
-      );
-      if (selectedOption) {
-        targetLanguageOptions = [selectedOption, ...targetLanguageOptions];
-      }
-    }
 
     return (
       <aside
@@ -187,17 +148,6 @@ class MessageTranslatorPanel extends Component<Props, State> {
             <div className="translator-setting-row translator-setting-row--language">
               <span>{intl.formatMessage(messages.myLanguage)}</span>
               <div className="translator-language-field">
-                <input
-                  type="text"
-                  className="translator-language-search"
-                  value={this.state.myLanguageSearch}
-                  placeholder={intl.formatMessage(
-                    messages.languageSearchPlaceholder,
-                  )}
-                  onChange={e =>
-                    this.setState({ myLanguageSearch: e.target.value })
-                  }
-                />
                 <select
                   value={myLanguageValue}
                   onChange={e =>
@@ -218,17 +168,6 @@ class MessageTranslatorPanel extends Component<Props, State> {
             <div className="translator-setting-row translator-setting-row--language">
               <span>{intl.formatMessage(messages.targetLanguage)}</span>
               <div className="translator-language-field">
-                <input
-                  type="text"
-                  className="translator-language-search"
-                  value={this.state.targetLanguageSearch}
-                  placeholder={intl.formatMessage(
-                    messages.languageSearchPlaceholder,
-                  )}
-                  onChange={e =>
-                    this.setState({ targetLanguageSearch: e.target.value })
-                  }
-                />
                 <select
                   value={targetLanguageValue}
                   onChange={e =>
