@@ -62,11 +62,6 @@ export default class UserAgent {
     return null;
   }
 
-  @computed get userAgentWithoutChromeVersion(): string {
-    const withChrome = this.defaultUserAgent;
-    return withChrome.replace(/Chrome\/[\d.]+/, 'Chrome');
-  }
-
   @computed get userAgent(): string {
     return this.serviceUserAgentPref || this.defaultUserAgent;
   }
@@ -76,17 +71,8 @@ export default class UserAgent {
   }
 
   @action _handleNavigate(url: string): void {
-    if (url.startsWith('https://accounts.google.com')) {
-      debug('Setting user agent to chromeless for url', url);
-      // Set chromeless user agent (without Chrome version) for Google accounts
-      this.webview.userAgent =
-        this.serviceUserAgentPref || this.userAgentWithoutChromeVersion;
-    } else {
-      debug('Setting user agent to default for url', url);
-      // Set default user agent for all other sites
-      this.webview.userAgent =
-        this.serviceUserAgentPref || this.defaultUserAgent;
-    }
+    debug('Setting user agent for url', url);
+    this.webview.userAgent = this.serviceUserAgentPref || this.defaultUserAgent;
     // Note: We don't reload the URL here (previously done with loadURL() on will-navigate)
     // because it cancels POST requests, which breaks SSO/SAML authentication flows
     // (e.g., ACS endpoint requests). The user agent change takes effect on the
