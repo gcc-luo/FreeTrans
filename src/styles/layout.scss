@@ -138,6 +138,7 @@ body.win32:not(.isFullScreen) .app .app__content {
   --translator-panel-bg: #f3f4f6;
   --translator-panel-border: #d6d9de;
   --translator-header-bg: #e2ebf8;
+  --translator-header-height: 50px;
   --translator-text-color: #1f2937;
   --translator-card-bg: #f6f7f8;
   --translator-card-border: #d9dde3;
@@ -182,15 +183,16 @@ body.win32:not(.isFullScreen) .app .app__content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--translator-panel-border);
   background: var(--translator-header-bg);
-  height: auto;
+  height: var(--translator-header-height);
   flex: 0 0 auto;
+  box-sizing: border-box;
 }
 
 .translator-panel__header--compact {
-  min-height: 72px;
+  min-height: var(--translator-header-height);
 }
 
 .translator-panel__title {
