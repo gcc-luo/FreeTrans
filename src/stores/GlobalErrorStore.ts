@@ -1,4 +1,5 @@
 import type { Response } from 'electron';
+import { ipcRenderer } from 'electron';
 import { action, makeObservable, observable } from 'mobx';
 import type { Stores } from '../@types/stores.types';
 import type { Actions } from '../actions/lib/actions';
@@ -7,7 +8,7 @@ import Request from './lib/Request';
 import TypedStore from './lib/TypedStore';
 
 interface Message {
-  type: 'error' | 'log' | 'info';
+  type: 'error' | 'warn' | 'log' | 'info';
   error?: {
     message?: string;
     status?: number;
@@ -29,6 +30,36 @@ const isIgnorableConsoleNoise = (args: any[]): boolean => {
     first.includes('Request Autofill.enable failed') ||
     first.includes('Request Autofill.setAddresses failed')
   );
+};
+
+const formatConsoleArgs = (args: any[]): string => {
+  return args
+    .map(arg => {
+      if (typeof arg === 'string') return arg;
+      if (arg instanceof Error)
+        return `${arg.name}: ${arg.message}\n${arg.stack || ''}`;
+      try {
+        return JSON.stringify(arg);
+      } catch {
+        return String(arg);
+      }
+    })
+    .join(' ');
+};
+
+const sendRendererLogToFile = (
+  level: 'info' | 'warn' | 'error' | 'debug',
+  args: any[],
+) => {
+  try {
+    ipcRenderer.send('app:log-to-file', {
+      level,
+      scope: 'renderer',
+      message: formatConsoleArgs(args),
+    });
+  } catch {
+    // Keep silent to avoid recursive logging loops.
+  }
 };
 
 export default class GlobalErrorStore extends TypedStore {
@@ -56,6 +87,7 @@ export default class GlobalErrorStore extends TypedStore {
       }
       // @ts-expect-error ts-message: Expected 5 arguments, but got 2.
       this._handleConsoleError.call(this, ['error', ...errorArgs]);
+      sendRendererLogToFile('error', errorArgs);
       origConsoleError.apply(this, errorArgs);
     };
 
@@ -64,6 +96,7 @@ export default class GlobalErrorStore extends TypedStore {
     window.console.log = (...logArgs: any[]) => {
       // @ts-expect-error ts-message: Expected 5 arguments, but got 2.
       this._handleConsoleError.call(this, ['log', ...logArgs]);
+      sendRendererLogToFile('info', logArgs);
       origConsoleLog.apply(this, logArgs);
     };
 
@@ -72,7 +105,16 @@ export default class GlobalErrorStore extends TypedStore {
     window.console.info = (...infoArgs: any[]) => {
       // @ts-expect-error ts-message: Expected 5 arguments, but got 2.
       this._handleConsoleError.call(this, ['info', ...infoArgs]);
+      sendRendererLogToFile('info', infoArgs);
       origConsoleInfo.apply(this, infoArgs);
+    };
+
+    const origConsoleWarn = console.warn;
+    window.console.warn = (...warnArgs: any[]) => {
+      // @ts-expect-error ts-message: Expected 5 arguments, but got 2.
+      this._handleConsoleError.call(this, ['warn', ...warnArgs]);
+      sendRendererLogToFile('warn', warnArgs);
+      origConsoleWarn.apply(this, warnArgs);
     };
 
     Request.registerHook(this._handleRequests);

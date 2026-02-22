@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { ipcRenderer } from 'electron';
 import { action, makeObservable, observable, reaction } from 'mobx';
 import { observer } from 'mobx-react';
 import { Component, type ReactElement } from 'react';
@@ -41,6 +42,11 @@ class ServiceWebview extends Component<IProps> {
             if (message.includes('[Ferdium Translator]')) {
               // eslint-disable-next-line no-console
               console.log('[WebView Console]', message);
+              ipcRenderer.send('app:log-to-file', {
+                level: e.level >= 2 ? 'warn' : 'info',
+                scope: `webview:${this.props.service.id}`,
+                message,
+              });
             }
             debug('Service logged a message:', message);
           });

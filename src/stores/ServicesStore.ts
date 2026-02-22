@@ -156,6 +156,15 @@ export default class ServicesStore extends TypedStore {
         textLength: result.text?.length,
         error: result.error,
       });
+      // eslint-disable-next-line no-console
+      console.log('[ServicesStore] Receive translation result', {
+        serviceId: result.serviceId,
+        requestId: result.requestId,
+        success: result.success,
+        translatedTextPreview: String(result.text || '').slice(0, 120),
+        translatedTextLength: String(result.text || '').length,
+        error: result.error,
+      });
 
       const { serviceId, requestId, success, text, error } = result;
       if (serviceId && this.one(serviceId)?.webview) {
@@ -880,6 +889,17 @@ export default class ServicesStore extends TypedStore {
 
       case 'translator:translate-message': {
         debug('Received translation request from', serviceId, args[0]);
+        // eslint-disable-next-line no-console
+        console.log('[ServicesStore] Forward translation request', {
+          serviceId,
+          requestId: args[0]?.requestId,
+          profile: args[0]?.profile || '',
+          reason: args[0]?.reason || '',
+          fromLang: args[0]?.fromLang || '',
+          toLang: args[0]?.toLang || '',
+          translatorEngine: args[0]?.translatorEngine || '',
+          originalTextPreview: String(args[0]?.text || '').slice(0, 120),
+        });
         // Forward translation request to main process
         // MVP 版本：固定使用 LibreTranslate（开源免费）
         ipcRenderer.send('translator:translate-message', {

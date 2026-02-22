@@ -135,6 +135,8 @@ describe('baidu-translate language mapping', () => {
       { input: 'zh-TW', expectedSource: 'cht', expectedTarget: 'cht' },
       { input: 'vie', expectedSource: 'vie', expectedTarget: 'vie' },
       { input: 'vi', expectedSource: 'vie', expectedTarget: 'vie' },
+      { input: 'id', expectedSource: 'id', expectedTarget: 'id' },
+      { input: 'hi', expectedSource: 'hi', expectedTarget: 'hi' },
     ];
 
     fetchMock.mockImplementation(() =>

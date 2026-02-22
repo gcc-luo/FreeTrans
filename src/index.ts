@@ -10,6 +10,7 @@ import {
   globalShortcut,
   ipcMain,
   session,
+  webContents as electronWebContents,
 } from 'electron';
 
 import { initialize } from 'electron-react-titlebar/main';
@@ -17,6 +18,12 @@ import windowStateKeeper from 'electron-window-state';
 import { emptyDirSync, ensureFileSync } from 'fs-extra';
 import minimist from 'minimist';
 import ms from 'ms';
+import {
+  attachMainConsoleToFileLog,
+  getFileLogPath,
+  initializeFileLogger,
+  writeToFileLog,
+} from './electron/fileLogger';
 import { enableWebContents, initializeRemote } from './electron-util';
 import enforceMacOSAppLocation from './enforce-macos-app-location';
 
@@ -107,6 +114,23 @@ const TRANSLATION_RESULT_CACHE_FILE = userDataPath(
   'translation-result-cache-v1.json',
 );
 const TRANSLATION_RESULT_CACHE_MAX_ENTRIES = 5000;
+
+ipcMain.on(
+  'app:log-to-file',
+  (
+    _event,
+    payload: {
+      level?: 'info' | 'warn' | 'error' | 'debug';
+      scope?: string;
+      message?: string;
+    },
+  ) => {
+    const level = payload?.level || 'info';
+    const scope = payload?.scope || 'renderer';
+    const message = payload?.message || '';
+    writeToFileLog(level, scope, message);
+  },
+);
 
 const retrieveSettingValue = (key: string, defaultValue: boolean | string) =>
   ifUndefined<boolean | string>(settings.get(key), defaultValue);
@@ -511,6 +535,15 @@ app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
+  attachMainConsoleToFileLog();
+  const logFilePath = initializeFileLogger();
+  writeToFileLog('info', 'main', 'File logger initialized', {
+    logFilePath,
+    appVersion: app.getVersion(),
+  });
+  // eslint-disable-next-line no-console
+  console.log('[Ferdium Logger] file log path:', getFileLogPath());
+
   // force app to live in /Applications
   enforceMacOSAppLocation();
 
@@ -609,12 +642,97 @@ ipcMain.handle(
   },
 );
 
+// Inject translator script into all frames (main + iframes) for Google Chat
+ipcMain.handle(
+  'translator:inject-in-all-frames',
+  async (
+    _event,
+    { webContentsId, script }: { webContentsId: number; script: string },
+  ) => {
+    try {
+      const wc = electronWebContents.fromId(webContentsId);
+      if (!wc || wc.isDestroyed()) return 'error';
+      const { mainFrame } = wc;
+      // eslint-disable-next-line no-console
+      console.log('[Translator Main] Inject script (all frames) start', {
+        webContentsId,
+        url: wc.getURL(),
+        childFrameCount: Number(mainFrame?.frames?.length || 0),
+      });
+      const collectFrames = (frame: any, acc: any[] = []) => {
+        if (!frame) return acc;
+        acc.push(frame);
+        const children = frame.frames || [];
+        for (const child of children) {
+          collectFrames(child, acc);
+        }
+        return acc;
+      };
+      const allFrames = collectFrames(mainFrame, []);
+      const execWithTimeout = async (frame: any, timeoutMs = 6000) => {
+        try {
+          const result = await Promise.race([
+            frame.executeJavaScript(script, true),
+            new Promise(resolve => {
+              setTimeout(() => resolve('timeout'), timeoutMs);
+            }),
+          ]);
+          return String(result || 'error');
+        } catch (error: any) {
+          const msg = error instanceof Error ? error.message : String(error);
+
+          console.warn('[Translator Main] Frame inject error', {
+            frameUrl: String(frame?.url || '').slice(0, 120),
+            error: msg.slice(0, 300),
+          });
+          return 'error';
+        }
+      };
+      const frameResults = await Promise.all(
+        allFrames.map(async frame => ({
+          isMain: frame === mainFrame,
+          url: String(frame?.url || ''),
+          status: await execWithTimeout(frame),
+        })),
+      );
+      const successCount = frameResults.filter(
+        item => item.status === 'ok' || item.status === 'already',
+      ).length;
+      const status = successCount > 0 ? 'ok' : 'error';
+      // eslint-disable-next-line no-console
+      console.log('[Translator Main] Inject script (all frames) done', {
+        webContentsId,
+        status,
+        frameCount: frameResults.length,
+        successCount,
+        frameStatuses: frameResults.slice(0, 12),
+      });
+      return status;
+    } catch (error) {
+      console.error('[Translator Main] Inject script (all frames) failed', {
+        webContentsId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return 'error';
+    }
+  },
+);
+
 // Handle translation requests from webview (translator feature)
 ipcMain.on(
   'translator:translate-message',
   async (
     _event,
-    { serviceId, requestId, text, fromLang, toLang, translatorEngine },
+    {
+      serviceId,
+      requestId,
+      text,
+      fromLang,
+      toLang,
+      translatorEngine,
+      reason,
+      profile,
+    },
   ) => {
     try {
       debug('Translation request:', {
@@ -624,6 +742,18 @@ ipcMain.on(
         fromLang,
         toLang,
         translatorEngine,
+      });
+      // eslint-disable-next-line no-console
+      console.log('[Translator Main] Request', {
+        serviceId,
+        requestId,
+        profile: profile || '',
+        reason: reason || '',
+        fromLang,
+        toLang,
+        translatorEngine,
+        originalTextLength: String(text || '').length,
+        originalTextPreview: String(text || '').slice(0, 120),
       });
 
       // 鍑嗗缈昏瘧閫夐」锛屽寘鎷櫨搴?API 閰嶇疆
@@ -651,6 +781,18 @@ ipcMain.on(
         translatorEngine || 'Baidu',
         translateOptions,
       );
+      // eslint-disable-next-line no-console
+      console.log('[Translator Main] Response', {
+        serviceId,
+        requestId,
+        profile: profile || '',
+        reason: reason || '',
+        success: !response.error,
+        originalTextPreview: String(text || '').slice(0, 120),
+        translatedTextPreview: String(response.text || '').slice(0, 120),
+        translatedTextLength: String(response.text || '').length,
+        error: response.error,
+      });
 
       debug('Translation response:', {
         serviceId,
@@ -672,6 +814,18 @@ ipcMain.on(
       }
     } catch (error) {
       debug('Translation error:', error);
+
+      console.error('[Translator Main] Translation error', {
+        serviceId,
+        requestId,
+        profile: profile || '',
+        reason: reason || '',
+        fromLang,
+        toLang,
+        translatorEngine,
+        originalTextPreview: String(text || '').slice(0, 120),
+        message: error instanceof Error ? error.message : String(error),
+      });
       if (mainWindow && serviceId) {
         mainWindow.webContents.send('translator:translation-result', {
           serviceId,

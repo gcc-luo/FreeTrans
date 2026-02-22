@@ -33,6 +33,8 @@ const BASE_LANGUAGE_OPTIONS: LanguageOption[] = [
   { value: 'hu', label: '匈牙利语' },
   { value: 'zh-TW', label: '繁体中文' },
   { value: 'vi', label: '越南语' },
+  { value: 'id', label: '印尼语' },
+  { value: 'hi', label: '印地语' },
 ];
 
 const HIDDEN_LANGUAGE_VALUES = new Set(['yue', 'zh-TW']);

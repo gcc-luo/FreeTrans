@@ -1,10 +1,33 @@
 import {
-  TARGET_LANGUAGE_OPTIONS,
-  VISIBLE_LANGUAGE_OPTIONS,
   getMyLanguageOptions,
   getTargetLanguageOptions,
   normalizeVisibleLanguageValue,
+  TARGET_LANGUAGE_OPTIONS,
+  VISIBLE_LANGUAGE_OPTIONS,
 } from '../../../src/features/messageTranslator/language-options';
+
+describe('messageTranslator language options', () => {
+  it('exposes id/hi in my-language options', () => {
+    const options = getMyLanguageOptions('');
+    const values = new Set(options.map(option => option.value));
+    expect(values.has('id')).toBe(true);
+    expect(values.has('hi')).toBe(true);
+  });
+
+  it('exposes id/hi in target-language options', () => {
+    const options = getTargetLanguageOptions('');
+    const values = new Set(options.map(option => option.value));
+    expect(values.has('id')).toBe(true);
+    expect(values.has('hi')).toBe(true);
+  });
+
+  it('keeps selected id/hi values instead of falling back', () => {
+    const myOptions = getMyLanguageOptions('');
+    const targetOptions = getTargetLanguageOptions('');
+    expect(normalizeVisibleLanguageValue('id', myOptions, 'auto')).toBe('id');
+    expect(normalizeVisibleLanguageValue('hi', targetOptions, 'en')).toBe('hi');
+  });
+});
 
 describe('MessageTranslator language options', () => {
   it('hides Cantonese and Traditional Chinese from panel options', () => {

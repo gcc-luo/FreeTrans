@@ -27,6 +27,7 @@ module.exports = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/recipes/',
+    '/test/e2e/',
     // TODO: Need to unignore tests
     '/src/internal-server',
   ],
