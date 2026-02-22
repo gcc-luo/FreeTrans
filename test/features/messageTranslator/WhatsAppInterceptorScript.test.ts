@@ -3,12 +3,19 @@ const setItemMock = jest.fn<undefined, [string, any]>();
 
 let MessageTranslatorStore: any;
 
-const captureInjectedScript = async () => {
+const captureInjectedScript = async ({
+  recipeId = 'whatsapp',
+  serviceUrl = '',
+}: {
+  recipeId?: string;
+  serviceUrl?: string;
+} = {}) => {
   const store: any = new MessageTranslatorStore();
   let injectedScript = '';
 
   const mockService = {
-    recipe: { id: 'whatsapp' },
+    recipe: { id: recipeId },
+    url: serviceUrl,
     webview: {
       executeJavaScript: jest.fn(async (script: string) => {
         injectedScript = script;
@@ -68,7 +75,10 @@ describe('WhatsApp interceptor script regression', () => {
     expect(injectedScript).toContain(
       "window.__ferdiumTranslatorCleanup('version-change')",
     );
-    expect(injectedScript).toContain("addDomListener(document, 'keydown'");
+    expect(
+      injectedScript.includes("addDomListener(document, 'keydown'") ||
+        injectedScript.includes("addDomListener(doc, 'keydown'"),
+    ).toBe(true);
     expect(injectedScript).toContain(
       "addIpcListener('translator:translation-result'",
     );
@@ -87,8 +97,10 @@ describe('WhatsApp interceptor script regression', () => {
 
   it('decorates local outgoing bubble with translated-over-original preview without changing send payload', async () => {
     const injectedScript = await captureInjectedScript();
-    const sendCall =
+    const sendCallLegacy =
       'await triggerNativeSend(preferClick, finalText, original, operationId);';
+    const sendCallWithOriginal =
+      'await triggerNativeSend(preferClick, finalSendText, original, operationId);';
     const previewCall = 'queueLocalPreviewDecoration(';
 
     expect(injectedScript).toContain(
@@ -116,12 +128,15 @@ describe('WhatsApp interceptor script regression', () => {
       "return Array.from(document.querySelectorAll('div.message-out'));",
     );
     expect(injectedScript).toContain(
-      'ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',
+      'ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24) !important;}',
     );
     expect(injectedScript).toContain(
-      'ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',
+      'ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e !important;opacity:0.96;}',
     );
-    expect(injectedScript).toContain(sendCall);
+    expect(
+      injectedScript.includes(sendCallLegacy) ||
+        injectedScript.includes(sendCallWithOriginal),
+    ).toBe(true);
     expect(injectedScript).toContain(previewCall);
     expect(injectedScript).toContain(
       'const outgoingRowCountBeforeSend = getOutgoingMessageRows().length;',
@@ -132,7 +147,12 @@ describe('WhatsApp interceptor script regression', () => {
 
     expect(
       injectedScript.indexOf('queueLocalPreviewDecoration('),
-    ).toBeGreaterThan(injectedScript.indexOf(sendCall));
+    ).toBeGreaterThan(
+      Math.max(
+        injectedScript.indexOf(sendCallLegacy),
+        injectedScript.indexOf(sendCallWithOriginal),
+      ),
+    );
 
     expect(injectedScript).not.toContain('finalText + original');
     expect(injectedScript).not.toContain('original + finalText');
@@ -230,9 +250,14 @@ describe('WhatsApp interceptor script regression', () => {
     expect(injectedScript).toContain(
       'state.settings.targetLanguage = detectedPeerLanguage;',
     );
-    expect(injectedScript).toContain(
-      "ipcRenderer.sendToHost('translator:incoming-language-detected', {",
-    );
+    expect(
+      injectedScript.includes(
+        "ipcRenderer.sendToHost('translator:incoming-language-detected', {",
+      ) ||
+        injectedScript.includes(
+          "sendToHostSafe('translator:incoming-language-detected', {",
+        ),
+    ).toBe(true);
     expect(injectedScript).toContain(
       "inferredLanguage: inferredLanguage || '',",
     );

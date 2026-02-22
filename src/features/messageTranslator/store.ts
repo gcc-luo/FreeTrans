@@ -1,4 +1,5 @@
 /* eslint-disable no-console */
+import { ipcRenderer } from 'electron';
 import {
   action,
   computed,
@@ -132,6 +133,52 @@ export default class MessageTranslatorStore extends FeatureStore {
     });
   };
 
+  _resolveTranslatorInterceptorPlatform = (
+    service: any,
+  ): 'whatsapp' | 'googlechat' | null => {
+    if (!service) return null;
+
+    const recipeId = String(service?.recipe?.id || '')
+      .trim()
+      .toLowerCase();
+    if (recipeId === 'whatsapp') {
+      return 'whatsapp';
+    }
+    if (
+      recipeId === 'googlechat' ||
+      recipeId === 'google-chat' ||
+      recipeId === 'google_chat' ||
+      recipeId === 'hangoutschat' ||
+      recipeId === 'hangouts' ||
+      recipeId === 'googlechatservice'
+    ) {
+      return 'googlechat';
+    }
+
+    const serviceUrl = String(service?.url || service?.customUrl || '')
+      .trim()
+      .toLowerCase();
+    if (!serviceUrl) return null;
+
+    if (serviceUrl.includes('web.whatsapp.com')) {
+      return 'whatsapp';
+    }
+    if (
+      serviceUrl.includes('chat.google.com') ||
+      serviceUrl.includes('mail.google.com/chat')
+    ) {
+      return 'googlechat';
+    }
+    if (
+      serviceUrl.includes('mail.google.com') &&
+      (serviceUrl.includes('#chat') || serviceUrl.includes('/#chat'))
+    ) {
+      return 'googlechat';
+    }
+
+    return null;
+  };
+
   _pushSettingsToService = (serviceId: string) => {
     if (!serviceId) return;
     const service = this.stores?.services?.one?.(serviceId);
@@ -152,11 +199,14 @@ export default class MessageTranslatorStore extends FeatureStore {
       });
     };
 
-    if (service?.recipe?.id === 'whatsapp') {
+    const interceptorPlatform =
+      this._resolveTranslatorInterceptorPlatform(service);
+    if (interceptorPlatform) {
       console.log(
-        '[Ferdium Translator Store] Pushing settings to WhatsApp service:',
+        '[Ferdium Translator Store] Pushing settings to translator-interceptor service:',
         {
           serviceId,
+          interceptorPlatform,
           settings: {
             myLanguage: settings.myLanguage,
             targetLanguage: settings.targetLanguage,
@@ -168,8 +218,9 @@ export default class MessageTranslatorStore extends FeatureStore {
         },
       );
 
-      debug('Injecting WhatsApp translator interceptor', {
+      debug('Injecting translator interceptor', {
         serviceId,
+        interceptorPlatform,
         settings: {
           myLanguage: settings.myLanguage,
           targetLanguage: settings.targetLanguage,
@@ -180,16 +231,21 @@ export default class MessageTranslatorStore extends FeatureStore {
         },
       });
 
-      this._ensureWhatsAppInterceptor(serviceId)
+      this._ensureWhatsAppInterceptor(serviceId, interceptorPlatform)
         .then(status => {
           console.log(
-            '[Ferdium Translator Store] WhatsApp interceptor injection result:',
+            '[Ferdium Translator Store] Translator interceptor injection result:',
             {
               serviceId,
+              interceptorPlatform,
               status,
             },
           );
-          debug('WhatsApp interceptor injection result', { serviceId, status });
+          debug('Translator interceptor injection result', {
+            serviceId,
+            interceptorPlatform,
+            status,
+          });
           if (status === 'ok' || status === 'already') {
             const timer = this._whatsAppRetryTimers.get(serviceId);
             if (timer) {
@@ -201,27 +257,32 @@ export default class MessageTranslatorStore extends FeatureStore {
               this._injectedWhatsAppServices.add(serviceId);
             }
             console.log(
-              '[Ferdium Translator Store] WhatsApp interceptor ready, sending config',
+              '[Ferdium Translator Store] Translator interceptor ready, sending config',
             );
             return;
           }
 
           console.warn(
-            '[Ferdium Translator Store] WhatsApp interceptor not ready:',
+            '[Ferdium Translator Store] Translator interceptor not ready:',
             status,
           );
-          debug('WhatsApp translator interceptor not ready yet', {
+          debug('Translator interceptor not ready yet', {
             serviceId,
+            interceptorPlatform,
             status,
           });
           this._scheduleWhatsAppInjectRetry(serviceId);
         })
         .catch(error => {
           console.error(
-            '[Ferdium Translator Store] Failed to inject WhatsApp interceptor:',
+            '[Ferdium Translator Store] Failed to inject translator interceptor:',
             error,
           );
-          debug('Failed to inject WhatsApp interceptor', { serviceId, error });
+          debug('Failed to inject translator interceptor', {
+            serviceId,
+            interceptorPlatform,
+            error,
+          });
           this._scheduleWhatsAppInjectRetry(serviceId);
         })
         .finally(() => {
@@ -260,13 +321,24 @@ export default class MessageTranslatorStore extends FeatureStore {
     this._whatsAppRetryTimers.set(serviceId, timer);
   };
 
-  async _ensureWhatsAppInterceptor(serviceId: string): Promise<string> {
+  async _ensureWhatsAppInterceptor(
+    serviceId: string,
+    platformHint: 'whatsapp' | 'googlechat' | null = null,
+  ): Promise<string> {
     console.log(
       '[Ferdium Translator Store] _ensureWhatsAppInterceptor called for',
       serviceId,
     );
 
-    if (this._injectedWhatsAppServices.has(serviceId)) {
+    const service = this.stores?.services?.one?.(serviceId);
+    const interceptorPlatform =
+      platformHint ||
+      this._resolveTranslatorInterceptorPlatform(service) ||
+      'whatsapp';
+    if (
+      interceptorPlatform !== 'googlechat' &&
+      this._injectedWhatsAppServices.has(serviceId)
+    ) {
       console.log(
         '[Ferdium Translator Store] WhatsApp interceptor already injected for',
         serviceId,
@@ -274,14 +346,22 @@ export default class MessageTranslatorStore extends FeatureStore {
       debug('WhatsApp interceptor already injected for', serviceId);
       return 'already';
     }
-
-    const service = this.stores?.services?.one?.(serviceId);
+    if (
+      interceptorPlatform === 'googlechat' &&
+      this._injectedWhatsAppServices.has(serviceId)
+    ) {
+      console.log(
+        '[Ferdium Translator Store] Google Chat interceptor re-injecting for new frames',
+        serviceId,
+      );
+    }
     console.log('[Ferdium Translator Store] Service check:', {
       serviceId,
       hasService: !!service,
       hasWebview: !!service?.webview,
       hasExecuteJavaScript: !!service?.webview?.executeJavaScript,
       recipeId: service?.recipe?.id,
+      interceptorPlatform,
     });
 
     if (!service?.webview?.executeJavaScript) {
@@ -313,6 +393,7 @@ export default class MessageTranslatorStore extends FeatureStore {
       receiveTranslation: actualSettings.receiveTranslation !== false,
       showOriginalText: actualSettings.showOriginalText === true,
     });
+    const interceptorPlatformJson = JSON.stringify(interceptorPlatform);
 
     const script = `
       (() => {
@@ -320,6 +401,11 @@ export default class MessageTranslatorStore extends FeatureStore {
         const getIpcRenderer = () => {
           const bridged = window.ferdium?.ipcRenderer || window.Ferdium?.ipcRenderer;
           if (bridged) return bridged;
+          try {
+            const topBridged =
+              window.top?.ferdium?.ipcRenderer || window.top?.Ferdium?.ipcRenderer;
+            if (topBridged) return topBridged;
+          } catch (_error) {}
           try {
             if (typeof window.require === 'function') {
               const electron = window.require('electron');
@@ -330,10 +416,164 @@ export default class MessageTranslatorStore extends FeatureStore {
         };
 
         const ipcRenderer = getIpcRenderer();
-        if (!ipcRenderer || typeof ipcRenderer.sendToHost !== 'function') {
-          return 'no-ipc';
+        const hasDirectSendToHost =
+          !!ipcRenderer && typeof ipcRenderer.sendToHost === 'function';
+        const hasDirectInvoke = !!ipcRenderer && typeof ipcRenderer.invoke === 'function';
+        const canUseTopBridge = (() => {
+          try {
+            return window.top && window.top !== window;
+          } catch (_e) {
+            return false;
+          }
+        })();
+        if (!hasDirectSendToHost) {
+          try {
+            console.warn(
+              '[Ferdium Translator] no-direct-ipc frame: ' +
+                JSON.stringify({
+                  href: String(window.location?.href || ''),
+                  host: String(window.location?.host || ''),
+                  isTop: window.top === window,
+                  canUseTopBridge,
+                }),
+            );
+          } catch (_error) {}
         }
-        const interceptorVersion = '2026-02-20-v16';
+        const BRIDGE_TAG = '__ferdiumTranslatorBridge';
+        const BRIDGE_ACTION_CONFIG_SYNC = 'configure-sync';
+        const bridgePending = new Map();
+        let bridgeReqId = 0;
+        const bridgeInvoke = (channel, payload) =>
+          new Promise((resolve, reject) => {
+            if (!canUseTopBridge) {
+              reject(new Error('top-bridge-not-available'));
+              return;
+            }
+            let topWindow = null;
+            try {
+              topWindow = window.top;
+            } catch (_e) {}
+            if (!topWindow || typeof topWindow.postMessage !== 'function') {
+              reject(new Error('top-postmessage-not-available'));
+              return;
+            }
+            const requestId = 'bridge-' + ++bridgeReqId;
+            const timeout = setTimeout(() => {
+              bridgePending.delete(requestId);
+              reject(new Error('top-bridge-timeout'));
+            }, 12000);
+            bridgePending.set(requestId, { resolve, reject, timeout });
+            try {
+              topWindow.postMessage(
+                {
+                  [BRIDGE_TAG]: true,
+                  direction: 'request',
+                  requestId,
+                  action: 'invoke',
+                  channel,
+                  payload,
+                },
+                '*',
+              );
+            } catch (error) {
+              clearTimeout(timeout);
+              bridgePending.delete(requestId);
+              reject(error);
+            }
+          });
+        window.addEventListener('message', event => {
+          const data = event?.data;
+          if (!data || data[BRIDGE_TAG] !== true || data.direction !== 'response') {
+            return;
+          }
+          const requestId = String(data.requestId || '');
+          const pending = bridgePending.get(requestId);
+          if (!pending) return;
+          clearTimeout(pending.timeout);
+          bridgePending.delete(requestId);
+          if (data.ok) {
+            pending.resolve(data.result);
+          } else {
+            pending.reject(new Error(String(data.error || 'top-bridge-failed')));
+          }
+        });
+        if (window.top === window && hasDirectInvoke) {
+          window.addEventListener('message', async event => {
+            const data = event?.data;
+            if (!data || data[BRIDGE_TAG] !== true || data.direction !== 'request') {
+              return;
+            }
+            const action = String(data.action || '');
+            if (action === 'sendToHost') {
+              if (hasDirectSendToHost) {
+                try {
+                  ipcRenderer.sendToHost(data.channel, data.payload);
+                } catch (_e) {}
+              }
+              return;
+            }
+            if (action !== 'invoke') return;
+            const requestId = String(data.requestId || '');
+            if (!requestId) return;
+            try {
+              const result = await ipcRenderer.invoke(data.channel, data.payload);
+              event.source?.postMessage?.(
+                {
+                  [BRIDGE_TAG]: true,
+                  direction: 'response',
+                  requestId,
+                  ok: true,
+                  result,
+                },
+                '*',
+              );
+            } catch (error) {
+              event.source?.postMessage?.(
+                {
+                  [BRIDGE_TAG]: true,
+                  direction: 'response',
+                  requestId,
+                  ok: false,
+                  error: String(error?.message || error || ''),
+                },
+                '*',
+              );
+            }
+          });
+        }
+        const invokeTranslator = async (channel, payload) => {
+          if (hasDirectInvoke) {
+            return ipcRenderer.invoke(channel, payload);
+          }
+          return bridgeInvoke(channel, payload);
+        };
+        const sendToHostSafe = (channel, payload) => {
+          if (hasDirectSendToHost) {
+            try {
+              ipcRenderer.sendToHost(channel, payload);
+              return true;
+            } catch (_e) {}
+          }
+          if (canUseTopBridge) {
+            try {
+              window.top?.postMessage?.(
+                {
+                  [BRIDGE_TAG]: true,
+                  direction: 'request',
+                  action: 'sendToHost',
+                  channel,
+                  payload,
+                },
+                '*',
+              );
+              return true;
+            } catch (_e) {}
+          }
+          return false;
+        };
+
+        const interceptorVersion = '2026-02-21-v17';
+        const interceptorPlatform = ${interceptorPlatformJson};
         if (
           window.__ferdiumTranslatorInterceptorLoaded &&
           window.__ferdiumTranslatorInterceptorVersion === interceptorVersion
@@ -355,6 +595,46 @@ export default class MessageTranslatorStore extends FeatureStore {
         window.__ferdiumTranslatorInterceptorInstanceId = instanceId;
         window.__ferdiumTranslatorInterceptorInstallCount =
           Number(window.__ferdiumTranslatorInterceptorInstallCount || 0) + 1;
+        const normalizedHost = String(window.location?.hostname || '')
+          .trim()
+          .toLowerCase();
+        const looksLikeGoogleChatHost =
+          normalizedHost === 'chat.google.com' ||
+          normalizedHost.endsWith('.chat.google.com') ||
+          normalizedHost === 'mail.google.com';
+        const activeProfile =
+          interceptorPlatform === 'googlechat' ||
+          (interceptorPlatform !== 'whatsapp' && looksLikeGoogleChatHost)
+            ? 'googlechat'
+            : 'whatsapp';
+        const isGoogleChatProfile = () => activeProfile === 'googlechat';
+        const isWhatsAppProfile = () => activeProfile === 'whatsapp';
+        const GOOGLE_CHAT_OWN_MESSAGE_HINTS = [
+          'you said',
+          'you sent',
+          'you:',
+          '你说',
+          '你說',
+          '你发送',
+          '你發送',
+          '你傳送',
+        ];
+        const SEND_BUTTON_HINTS = [
+          'send',
+          '发送',
+          '發送',
+          'send message',
+          'enviar',
+          'envoyer',
+          'senden',
+        ];
+        const GOOGLE_CHAT_TEXT_SELECTORS = [
+          'div[dir="auto"]',
+          'span[dir="auto"]',
+          'div[jsname]',
+          'div[role="text"]',
+          'span',
+        ];
 
         // Initialize state from host-side settings.
         const initialSettings = ${initialSettingsJson};
@@ -414,6 +694,66 @@ export default class MessageTranslatorStore extends FeatureStore {
           });
         };
 
+        const normalizeIncomingSettingsPatch = settingsPatch => {
+          const merged = {
+            ...state.settings,
+            ...(settingsPatch || {}),
+          };
+          if (merged.sendTranslation === undefined) {
+            merged.sendTranslation = true;
+          }
+          if (merged.receiveTranslation === undefined) {
+            merged.receiveTranslation = true;
+          }
+          if (merged.showOriginalText === undefined) {
+            merged.showOriginalText = false;
+          }
+          return merged;
+        };
+
+        const syncSettingsToChildFrames = nextSettings => {
+          if (window.top !== window) return;
+          const payload = {
+            [BRIDGE_TAG]: true,
+            direction: 'broadcast',
+            action: BRIDGE_ACTION_CONFIG_SYNC,
+            settings: nextSettings,
+            sourceInstanceId: instanceId,
+          };
+          try {
+            for (let idx = 0; idx < window.frames.length; idx += 1) {
+              window.frames[idx]?.postMessage?.(payload, '*');
+            }
+          } catch (_error) {}
+        };
+
+        addDomListener(window, 'message', event => {
+          const data = event?.data;
+          if (!data || data[BRIDGE_TAG] !== true) return;
+          if (String(data.direction || '') !== 'broadcast') return;
+          if (String(data.action || '') !== BRIDGE_ACTION_CONFIG_SYNC) return;
+          if (!isActiveInterceptorInstance()) return;
+          const incomingSettings = data.settings;
+          if (!incomingSettings || typeof incomingSettings !== 'object') return;
+          const oldSettings = { ...state.settings };
+          state.settings = normalizeIncomingSettingsPatch(incomingSettings);
+          try {
+            console.log('[Ferdium Translator] Settings synced from top frame:', {
+              sourceInstanceId: String(data.sourceInstanceId || ''),
+              old: oldSettings,
+              new: state.settings,
+            });
+          } catch (_e) {}
+          if (state.settings.receiveTranslation) {
+            ensureIncomingObserver();
+            scheduleIncomingScan('configure-sync', 220);
+          }
+          ensureOutgoingHistoryObserver();
+          scheduleOutgoingHistoryScan('configure-sync', 260);
+          scheduleBootstrapFormattingPass('configure-sync');
+          refreshFormattingForActiveChat('configure-sync');
+        });
+
         const disposeInterceptor = reason => {
           for (const req of state.requests.values()) {
             clearTimeout(req.timeout);
@@ -454,7 +794,88 @@ export default class MessageTranslatorStore extends FeatureStore {
           return rect.width > 0 && rect.height > 0;
         };
 
+        const getComposerCandidateScore = node => {
+          if (!(node instanceof Element)) return -1;
+          const rect = node.getBoundingClientRect();
+          const ariaLabel = String(node.getAttribute('aria-label') || '').toLowerCase();
+          let score = 0;
+          if (node.closest('footer')) score += 60;
+          if (node.getAttribute('role') === 'textbox') score += 28;
+          if (ariaLabel.includes('message')) score += 24;
+          if (ariaLabel.includes('chat')) score += 16;
+          if (ariaLabel.includes('输入') || ariaLabel.includes('輸入')) score += 16;
+          if (ariaLabel.includes('消息') || ariaLabel.includes('訊息')) score += 16;
+          if (String(node.getAttribute('data-lexical-editor') || '') === 'true') {
+            score += 22;
+          }
+          // Prefer lower composer candidates to avoid picking top search inputs.
+          score += Math.max(0, Math.round(rect.top + rect.height));
+          return score;
+        };
+
+        const pickBestComposer = candidates => {
+          let best = null;
+          let bestScore = -1;
+          for (const candidate of candidates) {
+            if (!(candidate instanceof Element)) continue;
+            if (!isVisibleComposer(candidate)) continue;
+            const score = getComposerCandidateScore(candidate);
+            if (score > bestScore) {
+              best = candidate;
+              bestScore = score;
+            }
+          }
+          return best;
+        };
+
+        const querySelectorAllIncludingShadowRoots = (root, selector) => {
+          const out = [];
+          if (!root) return out;
+          try {
+            if (root instanceof Element) {
+              root.querySelectorAll(selector).forEach(node => {
+                if (node instanceof Element) out.push(node);
+              });
+            }
+            const walk = node => {
+              if (!(node instanceof Element)) return;
+              if (node.shadowRoot) {
+                node.shadowRoot.querySelectorAll(selector).forEach(n => {
+                  if (n instanceof Element) out.push(n);
+                });
+                node.shadowRoot.querySelectorAll('*').forEach(walk);
+              }
+              node.querySelectorAll('*').forEach(walk);
+            };
+            if (root instanceof Document) {
+              root.querySelectorAll(selector).forEach(n => {
+                if (n instanceof Element) out.push(n);
+              });
+              root.body && walk(root.body);
+            } else if (root instanceof Element) {
+              walk(root);
+            }
+          } catch (_err) {}
+          return out;
+        };
+
+        const getDocumentsToSearch = () => {
+          const docs = [document];
+          if (!isGoogleChatProfile()) return docs;
+          try {
+            const iframes = document.querySelectorAll('iframe');
+            for (let i = 0; i < iframes.length; i++) {
+              const doc = iframes[i].contentDocument;
+              if (doc && doc !== document && !docs.includes(doc)) {
+                docs.push(doc);
+              }
+            }
+          } catch (_err) {}
+          return docs;
+        };
+
         const readComposer = () => {
+          if (!isGoogleChatProfile()) {
           const footer = document.querySelector('footer');
           const footerSelectors = [
             '[contenteditable="true"][role="textbox"]',
@@ -491,9 +912,123 @@ export default class MessageTranslatorStore extends FeatureStore {
             return found;
           }
           try {
-            console.warn('[Ferdium Translator] Composer not found');
+            console.warn(
+              '[Ferdium Translator] Composer not found: ' +
+                JSON.stringify({ profile: activeProfile }),
+            );
           } catch (_e) {}
           return null;
+          }
+
+          const roots = [
+            document.querySelector('div[role="main"]'),
+            document.querySelector('c-wiz[role="main"]'),
+            document.querySelector('main'),
+            document.body,
+          ].filter(Boolean);
+          const selectors = [
+            'div[contenteditable="true"][role="textbox"]',
+            'div[role="textbox"][contenteditable="true"]',
+            'div[contenteditable="true"][aria-label*="Message"]',
+            'div[contenteditable="true"][aria-label*="message"]',
+            'div[contenteditable="true"][aria-label*="消息"]',
+            'div[contenteditable="true"][aria-label*="訊息"]',
+            'div[contenteditable="true"][aria-label*="输入"]',
+            'div[contenteditable="true"][aria-label*="輸入"]',
+            'textarea[aria-label*="Message"]',
+            'textarea[aria-label*="message"]',
+            'textarea',
+          ];
+
+          const candidates = [];
+          for (const root of roots) {
+            if (!(root instanceof Element)) continue;
+            for (const selector of selectors) {
+              root.querySelectorAll(selector).forEach(node => {
+                if (node instanceof Element) {
+                  candidates.push(node);
+                }
+              });
+            }
+          }
+
+          let best = pickBestComposer(candidates);
+          if (best) {
+            try {
+              console.log(
+                '[Ferdium Translator] Found composer for Google Chat profile',
+                { tag: best.tagName, ariaLabel: best.getAttribute('aria-label') },
+              );
+            } catch (_e) {}
+          }
+          if (!best) {
+            const bodySelectors = [
+              'div[contenteditable="true"][role="textbox"]',
+              'div[contenteditable="true"]',
+              'textarea',
+            ];
+            const bodyCandidates = [];
+            for (const sel of bodySelectors) {
+              try {
+                document.querySelectorAll(sel).forEach(node => {
+                  if (node instanceof Element && isVisibleComposer(node)) {
+                    bodyCandidates.push(node);
+                  }
+                });
+              } catch (_err) {}
+            }
+            best = pickBestComposer(bodyCandidates);
+            if (best) {
+              try {
+                console.log(
+                  '[Ferdium Translator] Found composer for Google Chat (body fallback)',
+                  { tag: best.tagName, ariaLabel: best.getAttribute('aria-label') },
+                );
+              } catch (_e) {}
+            }
+          }
+          if (!best && isGoogleChatProfile()) {
+            const shadowSelectors = [
+              '[contenteditable="true"][role="textbox"]',
+              '[contenteditable="true"]',
+              'textarea',
+              '[role="textbox"]',
+            ];
+            const shadowCandidates = [];
+            const docsToSearch = getDocumentsToSearch();
+            for (const doc of docsToSearch) {
+              for (const sel of shadowSelectors) {
+                querySelectorAllIncludingShadowRoots(doc, sel).forEach(node => {
+                  if (node instanceof Element && isVisibleComposer(node)) {
+                    shadowCandidates.push(node);
+                  }
+                });
+              }
+            }
+            best = pickBestComposer(shadowCandidates);
+            if (best) {
+              try {
+                const inIframe = best.ownerDocument !== document;
+                console.log(
+                  '[Ferdium Translator] Found composer for Google Chat (shadow/iframe)',
+                  {
+                    tag: best.tagName,
+                    ariaLabel: best.getAttribute('aria-label'),
+                    inIframe,
+                  },
+                );
+              } catch (_e) {}
+            }
+          }
+          if (!best) {
+            try {
+              console.warn(
+                '[Ferdium Translator] Composer not found: ' +
+                  JSON.stringify({ profile: activeProfile }),
+              );
+            } catch (_e) {}
+          }
+          return best;
         };
 
         const getComposerText = el => {
@@ -601,9 +1136,9 @@ export default class MessageTranslatorStore extends FeatureStore {
             const style = document.createElement('style');
             style.id = LOCAL_PREVIEW_STYLE_ID;
             style.textContent = [
-              '.ferdium-translator-local-translation{display:block;white-space:pre-wrap;color:#111827;}',
-              '.ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',
-              '.ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',
+              '.ferdium-translator-local-translation{display:block;white-space:pre-wrap;color:#111827 !important;}',
+              '.ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24) !important;}',
+              '.ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e !important;opacity:0.96;}',
               '.ferdium-translator-incoming-translation{display:block;white-space:pre-wrap;color:#111827;}',
               '.ferdium-translator-incoming-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',
               '.ferdium-translator-incoming-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',
@@ -620,7 +1155,96 @@ export default class MessageTranslatorStore extends FeatureStore {
           } catch (_error) {}
         };
 
+        const isGoogleChatOwnMessageRow = row => {
+          if (!(row instanceof Element)) return false;
+          if (
+            row.getAttribute('data-is-own-message') === 'true' ||
+            row.querySelector('[data-is-own-message="true"]')
+          ) {
+            return true;
+          }
+          const rowAria = String(row.getAttribute('aria-label') || '').toLowerCase();
+          if (GOOGLE_CHAT_OWN_MESSAGE_HINTS.some(hint => rowAria.includes(hint))) {
+            return true;
+          }
+          const ownAriaNode = row.querySelector('[aria-label]');
+          const ownAriaText = String(
+            ownAriaNode?.getAttribute?.('aria-label') || '',
+          ).toLowerCase();
+          if (
+            ownAriaText &&
+            GOOGLE_CHAT_OWN_MESSAGE_HINTS.some(hint => ownAriaText.includes(hint))
+          ) {
+            return true;
+          }
+          return false;
+        };
+
+        const isGoogleChatMessageRow = row => {
+          if (!(row instanceof Element)) return false;
+          if (!row.matches('div[role="listitem"]')) return false;
+          const text = String(row.innerText || row.textContent || '').trim();
+          return text.length > 0;
+        };
+
+        const isOutgoingMessageRowElement = row => {
+          if (!(row instanceof Element)) return false;
+          if (!isGoogleChatProfile()) {
+            return row.matches('div.message-out') || !!row.closest('div.message-out');
+          }
+          return isGoogleChatMessageRow(row) && isGoogleChatOwnMessageRow(row);
+        };
+
+        const isIncomingMessageRowElement = row => {
+          if (!(row instanceof Element)) return false;
+          if (!isGoogleChatProfile()) {
+            return row.matches('div.message-in') || !!row.closest('div.message-in');
+          }
+          return isGoogleChatMessageRow(row) && !isGoogleChatOwnMessageRow(row);
+        };
+
+        const hasMatchingMessageRowInSubtree = (node, direction = 'incoming') => {
+          if (!(node instanceof Element)) return false;
+          const predicate =
+            direction === 'outgoing'
+              ? isOutgoingMessageRowElement
+              : isIncomingMessageRowElement;
+          if (predicate(node)) return true;
+          let current = node.parentElement;
+          while (current) {
+            if (predicate(current)) return true;
+            current = current.parentElement;
+          }
+          const subtreeSelector =
+            direction === 'outgoing'
+              ? isGoogleChatProfile()
+                ? 'div[role="listitem"]'
+                : 'div.message-out'
+              : isGoogleChatProfile()
+                ? 'div[role="listitem"]'
+                : 'div.message-in';
+          const subtreeMatches = Array.from(node.querySelectorAll(subtreeSelector));
+          for (const row of subtreeMatches) {
+            if (predicate(row)) return true;
+          }
+          return false;
+        };
+
         const getOutgoingMessageRows = () => {
+          if (isGoogleChatProfile()) {
+            try {
+              const rows = Array.from(document.querySelectorAll('div[role="listitem"]'));
+              const messageRows = rows.filter(row => {
+                return isGoogleChatMessageRow(row);
+              });
+              const outgoingRows = messageRows.filter(row =>
+                isOutgoingMessageRowElement(row),
+              );
+              return outgoingRows.length > 0 ? outgoingRows : messageRows;
+            } catch (_error) {
+              return [];
+            }
+          }
           try {
             return Array.from(document.querySelectorAll('div.message-out'));
           } catch (_error) {
@@ -628,8 +1252,53 @@ export default class MessageTranslatorStore extends FeatureStore {
           }
         };
 
+        const findBestMessageTextContainer = row => {
+          if (!(row instanceof Element)) return null;
+          let bestNode = null;
+          let bestScore = -1;
+          const seen = new Set();
+          for (const selector of GOOGLE_CHAT_TEXT_SELECTORS) {
+            const nodes = Array.from(row.querySelectorAll(selector));
+            for (const node of nodes) {
+              if (!(node instanceof Element)) continue;
+              if (seen.has(node)) continue;
+              seen.add(node);
+              if (
+                node.matches(
+                  'button,[role="button"],[contenteditable="true"],textarea,svg,time',
+                )
+              ) {
+                continue;
+              }
+              if (node.closest('button,[role="button"],[contenteditable="true"]')) {
+                continue;
+              }
+              const text = String(node.innerText || node.textContent || '').trim();
+              if (!text) continue;
+              const descendantCount = node.querySelectorAll('div,span,p').length;
+              const buttonCount = node.querySelectorAll('button,[role="button"]').length;
+              const dirBonus = String(node.getAttribute('dir') || '').toLowerCase() === 'auto'
+                ? 22
+                : 0;
+              const score =
+                Math.min(text.length, 260) -
+                Math.min(descendantCount, 80) -
+                buttonCount * 20 +
+                dirBonus;
+              if (score > bestScore) {
+                bestNode = node;
+                bestScore = score;
+              }
+            }
+          }
+          return bestNode;
+        };
+
         const findOutgoingMessageTextContainer = row => {
           if (!(row instanceof Element)) return null;
+          if (isGoogleChatProfile()) {
+            return findBestMessageTextContainer(row);
+          }
           const selectors = [
             '[data-testid="msg-text"]',
             'span.selectable-text.copyable-text',
@@ -721,6 +1390,8 @@ export default class MessageTranslatorStore extends FeatureStore {
           'sv',
           'hu',
           'vi',
+          'id',
+          'hi',
         ]);
 
         const toSettingsLanguageCode = value => {
@@ -752,6 +1423,20 @@ export default class MessageTranslatorStore extends FeatureStore {
         };
 
         const getIncomingMessageRows = () => {
+          if (isGoogleChatProfile()) {
+            try {
+              const rows = Array.from(document.querySelectorAll('div[role="listitem"]'));
+              const messageRows = rows.filter(row => {
+                return isGoogleChatMessageRow(row);
+              });
+              const incomingRows = messageRows.filter(row =>
+                isIncomingMessageRowElement(row),
+              );
+              return incomingRows.length > 0 ? incomingRows : messageRows;
+            } catch (_error) {
+              return [];
+            }
+          }
           try {
             return Array.from(document.querySelectorAll('div.message-in'));
           } catch (_error) {
@@ -761,6 +1446,9 @@ export default class MessageTranslatorStore extends FeatureStore {
 
         const findIncomingMessageTextContainer = row => {
           if (!(row instanceof Element)) return null;
+          if (isGoogleChatProfile()) {
+            return findBestMessageTextContainer(row);
+          }
           const selectors = [
             '[data-testid="msg-text"]',
             'span.selectable-text.copyable-text',
@@ -903,6 +1591,53 @@ export default class MessageTranslatorStore extends FeatureStore {
               '. Used detected source.';
           }
 
+          const cleanupSelectors = [
+            'span[' + INCOMING_TRANSLATION_ATTR + '="1"]',
+            'span[' + INCOMING_DIVIDER_ATTR + '="1"]',
+            'span[' + INCOMING_ORIGINAL_ATTR + '="1"]',
+            'span[' + INCOMING_MISMATCH_ATTR + '="1"]',
+          ];
+          for (const selector of cleanupSelectors) {
+            textContainer.querySelectorAll(selector).forEach(node => {
+              try {
+                node.remove();
+              } catch (_error) {}
+            });
+          }
+
+          if (isGoogleChatProfile()) {
+            const insertionAnchor = textContainer.firstChild;
+            if (insertionAnchor) {
+              textContainer.insertBefore(translationBlock, insertionAnchor);
+            } else {
+              textContainer.appendChild(translationBlock);
+            }
+            if (mismatchText) {
+              const mismatchBlock = document.createElement('span');
+              mismatchBlock.setAttribute(INCOMING_MISMATCH_ATTR, '1');
+              mismatchBlock.className = 'ferdium-translator-incoming-mismatch';
+              mismatchBlock.textContent = mismatchText;
+              if (translationBlock.nextSibling) {
+                textContainer.insertBefore(mismatchBlock, translationBlock.nextSibling);
+              } else {
+                textContainer.appendChild(mismatchBlock);
+              }
+            }
+            if (translationBlock.nextSibling) {
+              textContainer.insertBefore(dividerBlock, translationBlock.nextSibling);
+            } else {
+              textContainer.appendChild(dividerBlock);
+            }
+            if (dividerBlock.nextSibling) {
+              textContainer.insertBefore(originalBlock, dividerBlock.nextSibling);
+            } else {
+              textContainer.appendChild(originalBlock);
+            }
+            textContainer.setAttribute(INCOMING_PREVIEW_ATTR, '1');
+            textContainer.setAttribute(INCOMING_PREVIEW_TEXT_ATTR, translationComparable);
+            return true;
+          }
+
           while (textContainer.firstChild) {
             textContainer.removeChild(textContainer.firstChild);
           }
@@ -977,6 +1712,28 @@ export default class MessageTranslatorStore extends FeatureStore {
           operationId,
           minimumRowIndex = 0,
         ) => {
+          const isLikelyOutgoingMatch = (rowComparable, translatedComparable) => {
+            if (!rowComparable || !translatedComparable) return false;
+            if (
+              rowComparable.includes(translatedComparable) ||
+              translatedComparable.includes(rowComparable)
+            ) {
+              return true;
+            }
+            const translatedPrefix = translatedComparable.slice(0, 24).trim();
+            if (translatedPrefix.length >= 8 && rowComparable.includes(translatedPrefix)) {
+              return true;
+            }
+            const keywords = translatedComparable
+              .split(' ')
+              .map(item => item.trim())
+              .filter(item => item.length >= 3)
+              .slice(0, 4);
+            if (keywords.length < 2) return false;
+            const hitCount = keywords.filter(item => rowComparable.includes(item)).length;
+            return hitCount >= Math.min(2, keywords.length);
+          };
+
           const comparableTranslated = toComparableText(translatedText);
           const comparableOriginal = toComparableText(originalText);
           if (!comparableTranslated || !comparableOriginal) {
@@ -989,7 +1746,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             const row = outgoingRows[index];
             if (!(row instanceof Element)) continue;
             const rowComparable = toComparableText(String(row.innerText || ''));
-            if (!rowComparable || !rowComparable.includes(comparableTranslated)) {
+            if (!isLikelyOutgoingMatch(rowComparable, comparableTranslated)) {
               continue;
             }
             const messageTextContainer = findOutgoingMessageTextContainer(row);
@@ -1016,6 +1773,29 @@ export default class MessageTranslatorStore extends FeatureStore {
               });
             } catch (_e) {}
             return true;
+          }
+
+          // Google Chat can delay row text normalization; fallback to the latest row
+          // to keep the outgoing preview format consistent with WhatsApp UX.
+          if (isGoogleChatProfile() && outgoingRows.length > startIndex) {
+            const fallbackRow = outgoingRows[outgoingRows.length - 1];
+            if (fallbackRow instanceof Element) {
+              const messageTextContainer = findOutgoingMessageTextContainer(fallbackRow);
+              if (messageTextContainer) {
+                const applied = appendOriginalPreviewBlock(
+                  messageTextContainer,
+                  translatedText,
+                  originalText,
+                  operationId,
+                );
+                if (applied) {
+                  fallbackRow.setAttribute(LOCAL_PREVIEW_ATTR, '1');
+                  fallbackRow.setAttribute(LOCAL_PREVIEW_TEXT_ATTR, comparableTranslated);
+                  fallbackRow.setAttribute(LOCAL_PREVIEW_OP_ATTR, String(operationId || ''));
+                  return true;
+                }
+              }
+            }
           }
           return false;
         };
@@ -1123,6 +1903,16 @@ export default class MessageTranslatorStore extends FeatureStore {
           state.outgoingHistoryScanning = true;
           try {
             const outgoingRows = getOutgoingMessageRows();
+            try {
+              console.log(
+                '[Ferdium Translator] Outgoing history scan start: ' +
+                  JSON.stringify({
+                    reason,
+                    profile: activeProfile,
+                    rowCount: outgoingRows.length,
+                  }),
+              );
+            } catch (_e) {}
             const startIndex = Math.max(0, outgoingRows.length - 160);
             for (
               let index = startIndex;
@@ -1154,7 +1944,21 @@ export default class MessageTranslatorStore extends FeatureStore {
                   translatedText,
                   reason,
                 );
-                if (!originalText) continue;
+                if (!originalText) {
+                  try {
+                    console.log(
+                      '[Ferdium Translator] Outgoing history lookup miss: ' +
+                        JSON.stringify({
+                          reason,
+                          translatedPreview: translatedText.substring(0, 80),
+                          fromLanguage: state.settings.myLanguage || '',
+                          toLanguage: state.settings.targetLanguage || '',
+                          translatorEngine: state.settings.translatorEngine || 'Baidu',
+                        }),
+                    );
+                  } catch (_e) {}
+                  continue;
+                }
                 if (
                   toComparableText(originalText) === toComparableText(translatedText)
                 ) {
@@ -1168,6 +1972,16 @@ export default class MessageTranslatorStore extends FeatureStore {
                   'history-' + reason,
                 );
                 if (!applied) continue;
+                try {
+                  console.log(
+                    '[Ferdium Translator] Outgoing history preview restored: ' +
+                      JSON.stringify({
+                        reason,
+                        translatedPreview: translatedText.substring(0, 80),
+                        originalPreview: originalText.substring(0, 80),
+                      }),
+                  );
+                } catch (_e) {}
 
                 row.setAttribute(LOCAL_PREVIEW_ATTR, '1');
                 row.setAttribute(
@@ -1219,6 +2033,25 @@ export default class MessageTranslatorStore extends FeatureStore {
             const path = String(window.location?.pathname || '');
             const search = String(window.location?.search || '');
             const hash = String(window.location?.hash || '');
+            if (isGoogleChatProfile()) {
+              const headerNode =
+                document.querySelector('[role="heading"][aria-level="1"]') ||
+                document.querySelector('header [aria-label]') ||
+                document.querySelector('header h1') ||
+                document.querySelector('header h2');
+              const headerTitle = String(
+                headerNode?.getAttribute?.('aria-label') ||
+                  headerNode?.textContent ||
+                  '',
+              )
+                .trim()
+                .slice(0, 120);
+              const mainPane = document.querySelector('div[role="main"]');
+              const mainPaneState = mainPane ? 'main-ready' : 'main-missing';
+              return [path, search, hash, headerTitle, mainPaneState, activeProfile].join(
+                '|',
+              );
+            }
             const headerTitleNode = document.querySelector(
               '#main header [title]',
             );
@@ -2001,10 +2834,114 @@ export default class MessageTranslatorStore extends FeatureStore {
             return ok;
           }
 
+          if (isGoogleChatProfile()) {
+            const composer = readComposer();
+            const roots = [
+              composer?.closest?.('form'),
+              composer?.closest?.('div[role="main"]'),
+              document.querySelector('div[role="main"]'),
+              document,
+            ].filter(Boolean);
+
+            for (const root of roots) {
+              if (!(root instanceof Element) && root !== document) continue;
+              const textareaNode =
+                root.querySelector?.(
+                  'textarea[aria-label*="Message"], textarea[aria-label*="message"], textarea',
+                ) || null;
+              if (textareaNode instanceof HTMLTextAreaElement) {
+                setComposerText(textareaNode, text, {
+                  operationId,
+                  reason: 'composer-textarea-fallback',
+                  originalText,
+                });
+                const after = getComposerText(textareaNode);
+                if (isComposerSynced(after, text, originalText)) {
+                  return true;
+                }
+              }
+
+              const editableNode =
+                root.querySelector?.(
+                  '[contenteditable="true"][role="textbox"], [contenteditable="true"][aria-label*="Message"], [contenteditable="true"]',
+                ) || null;
+              if (editableNode instanceof Element) {
+                setComposerText(editableNode, text, {
+                  operationId,
+                  reason: 'composer-context-fallback',
+                  originalText,
+                  allowLexicalDomMutation: true,
+                  forceDomReplace: true,
+                });
+                const after = getComposerText(editableNode);
+                if (isComposerSynced(after, text, originalText)) {
+                  return true;
+                }
+              }
+            }
+          }
+
           return false;
         };
 
         const findSendButton = () => {
+          if (isGoogleChatProfile()) {
+            const composer = readComposer();
+            const roots = [
+              composer?.closest?.('form'),
+              composer?.closest?.('div[role="main"]'),
+              document.querySelector('div[role="main"]'),
+              document,
+            ].filter(Boolean);
+            const selectors = [
+              'button[aria-label*="Send message"]',
+              'button[aria-label*="send message"]',
+              'button[aria-label="Send"]',
+              'button[aria-label*="Send"]',
+              'button[aria-label*="发送"]',
+              'button[aria-label*="發送"]',
+              'button[data-tooltip*="Send"]',
+              'button[data-testid*="send"]',
+              '[role="button"][aria-label*="Send"]',
+              '[role="button"][aria-label*="发送"]',
+              '[role="button"][aria-label*="發送"]',
+              '[data-icon="send"]',
+            ];
+            for (const root of roots) {
+              if (!(root instanceof Element) && root !== document) continue;
+              for (const selector of selectors) {
+                const node = root.querySelector?.(selector) || null;
+                if (!node) continue;
+                if (node.tagName === 'BUTTON') return node;
+                return node.closest('button, [role="button"]') || node;
+              }
+            }
+            const docsToSearch = getDocumentsToSearch();
+            for (const doc of docsToSearch) {
+              const shadowButtons = querySelectorAllIncludingShadowRoots(
+                doc,
+                'button, [role="button"]',
+              );
+              for (const node of shadowButtons) {
+                if (!(node instanceof Element)) continue;
+                const aria = String(node.getAttribute('aria-label') || '').toLowerCase();
+                const testId = String(node.getAttribute('data-testid') || '').toLowerCase();
+                const title = String(node.getAttribute('title') || '').toLowerCase();
+                const text = String(node.textContent || '').toLowerCase();
+                const hasSend =
+                  aria.includes('send') ||
+                  aria.includes('发送') ||
+                  aria.includes('發送') ||
+                  testId.includes('send') ||
+                  title.includes('send') ||
+                  text.includes('send');
+                if (!hasSend) continue;
+                if (node.tagName === 'BUTTON') return node;
+                const btn = node.closest('button, [role="button"]') || node;
+                if (btn) return btn;
+              }
+            }
+          }
           const root = document.querySelector('footer') || document;
           const selectors = [
             'button[aria-label="Send"]',
@@ -2033,7 +2970,9 @@ export default class MessageTranslatorStore extends FeatureStore {
 
           const ariaLabel = String(clickable.getAttribute('aria-label') || '');
           const dataTestId = String(clickable.getAttribute('data-testid') || '');
-          const hints = (ariaLabel + ' ' + dataTestId).toLowerCase();
+          const title = String(clickable.getAttribute('title') || '');
+          const text = String(clickable.textContent || '');
+          const hints = (ariaLabel + ' ' + dataTestId + ' ' + title + ' ' + text).toLowerCase();
 
           if (
             hints.includes('send') ||
@@ -2049,7 +2988,25 @@ export default class MessageTranslatorStore extends FeatureStore {
             return true;
           }
 
+          if (SEND_BUTTON_HINTS.some(hint => hints.includes(hint))) {
+            return true;
+          }
+
           return false;
+        };
+
+        const resolveEventTargetElement = event => {
+          if (!event) return null;
+          const path =
+            typeof event.composedPath === 'function' ? event.composedPath() : [];
+          for (const node of Array.from(path || [])) {
+            if (node instanceof Element) {
+              return node;
+            }
+          }
+          if (event.target instanceof Element) return event.target;
+          if (event.target instanceof Node) return event.target.parentElement;
+          return null;
         };
 
         const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -2072,8 +3029,8 @@ export default class MessageTranslatorStore extends FeatureStore {
 
         const translateByInvoke = async (text, options = {}) => {
           console.log('[Ferdium Translator] translateByInvoke called');
-          if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') {
-            console.warn('[Ferdium Translator] ipcRenderer.invoke not available');
+          if (!hasDirectInvoke && !canUseTopBridge) {
+            console.warn('[Ferdium Translator] invoke not available (no direct ipc and no top bridge)');
             throw new Error('invoke-not-available');
           }
 
@@ -2093,7 +3050,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             }),
           );
 
-          const response = await ipcRenderer.invoke('translate', requestParams);
+          const response = await invokeTranslator('translate', requestParams);
           console.log(
             '[Ferdium Translator] translate invoke response:',
             JSON.stringify({
@@ -2132,26 +3089,38 @@ export default class MessageTranslatorStore extends FeatureStore {
             const toLang = options.toLang || state.settings.targetLanguage || 'en';
             const translatorEngine =
               options.translatorEngine || state.settings.translatorEngine || 'Baidu';
-            
-            // 娣诲姞璋冭瘯鏃ュ織
+            const translateReason = String(options.reason || 'unspecified');
+
             try {
-              console.debug('[Ferdium Translator] Sending translation request', {
-                requestId,
-                text: text.substring(0, 50),
-                fromLang,
-                toLang,
-                translatorEngine,
-                reason: options.reason || 'unspecified',
-              });
+              console.log(
+                '[Ferdium Translator] Sending translation request: ' +
+                  JSON.stringify({
+                    requestId,
+                    profile: activeProfile,
+                    text: text.substring(0, 50),
+                    textLength: String(text || '').length,
+                    fromLang,
+                    toLang,
+                    translatorEngine,
+                    reason: translateReason,
+                  }),
+              );
             } catch (_debugError) {}
-            
-            ipcRenderer.sendToHost('translator:translate-message', {
+
+            const sent = sendToHostSafe('translator:translate-message', {
               requestId,
               text,
               fromLang,
               toLang,
               translatorEngine,
+              reason: translateReason,
+              profile: activeProfile,
             });
+            if (!sent) {
+              clearTimeout(timeout);
+              state.requests.delete(requestId);
+              reject(new Error('sendToHost-not-available'));
+            }
           });
 
         const translate = async (text, options = {}) => {
@@ -2177,7 +3146,7 @@ export default class MessageTranslatorStore extends FeatureStore {
         };
 
         const detectLanguage = async sample => {
-          if (!ipcRenderer || typeof ipcRenderer.invoke !== 'function') {
+          if (!hasDirectInvoke && !canUseTopBridge) {
             return '';
           }
           const normalizedSample = String(sample || '').trim();
@@ -2185,7 +3154,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             return '';
           }
           try {
-            const detected = await ipcRenderer.invoke('detect-language', {
+            const detected = await invokeTranslator('detect-language', {
               sample: normalizedSample.slice(0, 1200),
             });
             return normalizeLanguageTag(detected || '');
@@ -2234,11 +3203,38 @@ export default class MessageTranslatorStore extends FeatureStore {
           if (!state.settings.receiveTranslation) return;
           if (!(row instanceof Element)) return;
           const textContainer = findIncomingMessageTextContainer(row);
-          if (!(textContainer instanceof Element)) return;
+          if (!(textContainer instanceof Element)) {
+            try {
+              console.log(
+                '[Ferdium Translator] Incoming row skipped (no text container): ' +
+                  JSON.stringify({
+                    reason,
+                    profile: activeProfile,
+                    rowPreview: String(row.innerText || row.textContent || '')
+                      .trim()
+                      .slice(0, 100),
+                  }),
+              );
+            } catch (_e) {}
+            return;
+          }
 
           const originalText = extractIncomingOriginalText(textContainer);
           const originalComparable = toComparableText(originalText);
-          if (!originalText || !originalComparable) return;
+          if (!originalText || !originalComparable) {
+            try {
+              console.log(
+                '[Ferdium Translator] Incoming row skipped (empty original): ' +
+                  JSON.stringify({
+                    reason,
+                    profile: activeProfile,
+                    hasOriginalText: !!originalText,
+                    hasOriginalComparable: !!originalComparable,
+                  }),
+              );
+            } catch (_e) {}
+            return;
+          }
 
           const targetLanguage = normalizeLanguageTag(
             state.settings.myLanguage || 'zh',
@@ -2317,13 +3313,14 @@ export default class MessageTranslatorStore extends FeatureStore {
               state.settings.myLanguage || 'zh',
             );
             if (
+              !isGoogleChatProfile() &&
               !lowConfidenceIncomingDetection &&
               detectedPeerLanguage &&
               detectedPeerLanguage !== configuredPeerLanguage &&
               detectedPeerLanguage !== myLanguage
             ) {
               state.settings.targetLanguage = detectedPeerLanguage;
-              ipcRenderer.sendToHost('translator:incoming-language-detected', {
+              sendToHostSafe('translator:incoming-language-detected', {
                 detectedLanguage: detectedPeerLanguage,
                 rawDetectedLanguage: detectedLanguage || '',
                 inferredLanguage: inferredLanguage || '',
@@ -2351,6 +3348,19 @@ export default class MessageTranslatorStore extends FeatureStore {
               },
             );
             if (!translatePlan.shouldTranslate) {
+              try {
+                console.log(
+                  '[Ferdium Translator] Incoming row skipped (shouldTranslate=false): ' +
+                    JSON.stringify({
+                      reason,
+                      profile: activeProfile,
+                      sourceLanguage: translatePlan.sourceLanguage,
+                      myLanguage: translatePlan.myLanguage,
+                      configuredPeerLanguage: translatePlan.configuredPeerLanguage,
+                      detectedLanguage: translatePlan.detectedLanguage,
+                    }),
+                );
+              } catch (_e) {}
               row.setAttribute(INCOMING_PREVIEW_SOURCE_ATTR, originalComparable);
               row.setAttribute(
                 INCOMING_PREVIEW_TARGET_LANG_ATTR,
@@ -2479,6 +3489,20 @@ export default class MessageTranslatorStore extends FeatureStore {
           state.incomingScanning = true;
           try {
             const rows = getIncomingMessageRows();
+            try {
+              console.log(
+                '[Ferdium Translator] Incoming scan start: ' +
+                  JSON.stringify({
+                    reason,
+                    profile: activeProfile,
+                    rowCount: rows.length,
+                    receiveTranslation: state.settings.receiveTranslation,
+                    myLanguage: state.settings.myLanguage,
+                    targetLanguage: state.settings.targetLanguage,
+                    translatorEngine: state.settings.translatorEngine,
+                  }),
+              );
+            } catch (_e) {}
             const startIndex = Math.max(0, rows.length - 20);
             for (let index = startIndex; index < rows.length; index += 1) {
               // eslint-disable-next-line no-await-in-loop
@@ -2520,24 +3544,20 @@ export default class MessageTranslatorStore extends FeatureStore {
               for (const mutation of mutations) {
                 if (mutation.type === 'characterData') {
                   const hostElement = mutation.target?.parentElement;
-                  if (hostElement?.closest?.('div.message-in')) {
+                  if (hasMatchingMessageRowInSubtree(hostElement, 'incoming')) {
                     shouldScan = true;
                     break;
                   }
                 }
                 if (mutation.target instanceof Element) {
-                  if (mutation.target.closest('div.message-in')) {
+                  if (hasMatchingMessageRowInSubtree(mutation.target, 'incoming')) {
                     shouldScan = true;
                     break;
                   }
                 }
                 for (const node of Array.from(mutation.addedNodes || [])) {
                   if (!(node instanceof Element)) continue;
-                  if (
-                    node.matches('div.message-in') ||
-                    node.closest('div.message-in') ||
-                    node.querySelector('div.message-in')
-                  ) {
+                  if (hasMatchingMessageRowInSubtree(node, 'incoming')) {
                     shouldScan = true;
                     break;
                   }
@@ -2597,25 +3617,21 @@ export default class MessageTranslatorStore extends FeatureStore {
               for (const mutation of mutations) {
                 if (mutation.type === 'characterData') {
                   const hostElement = mutation.target?.parentElement;
-                  if (hostElement?.closest?.('div.message-out')) {
+                  if (hasMatchingMessageRowInSubtree(hostElement, 'outgoing')) {
                     shouldScan = true;
                     break;
                   }
                 }
                 if (
                   mutation.target instanceof Element &&
-                  mutation.target.closest('div.message-out')
+                  hasMatchingMessageRowInSubtree(mutation.target, 'outgoing')
                 ) {
                   shouldScan = true;
                   break;
                 }
                 for (const node of Array.from(mutation.addedNodes || [])) {
                   if (!(node instanceof Element)) continue;
-                  if (
-                    node.matches('div.message-out') ||
-                    node.closest('div.message-out') ||
-                    node.querySelector('div.message-out')
-                  ) {
+                  if (hasMatchingMessageRowInSubtree(node, 'outgoing')) {
                     shouldScan = true;
                     break;
                   }
@@ -2881,7 +3897,11 @@ export default class MessageTranslatorStore extends FeatureStore {
             return;
           }
 
-          const composer = readComposer();
+          const composerFromEvent =
+            triggerSource === 'send-button'
+              ? resolveComposerFromContextTarget(triggerEvent?.target)
+              : null;
+          const composer = composerFromEvent || readComposer();
           const original = getComposerText(composer);
           if (!composer || !original) {
             try {
@@ -2890,6 +3910,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                 triggerSource,
                 hasComposer: !!composer,
                 originalLength: original?.length,
+                hasComposerFromEvent: !!composerFromEvent,
               });
             } catch (_e) {}
             return;
@@ -2994,11 +4015,18 @@ export default class MessageTranslatorStore extends FeatureStore {
               );
               return;
             }
-            console.log('[Ferdium Translator] Setting composer text to:', finalText.substring(0, 100));
+            const finalSendText =
+              isGoogleChatProfile() && String(original || '').trim()
+                ? String(finalText || '') + '\\n\\n----------------\\n' + String(original || '').trim()
+                : finalText;
+            console.log(
+              '[Ferdium Translator] Setting composer text to:',
+              finalSendText.substring(0, 120),
+            );
             let activeComposer = composer;
             let isLexicalFlow =
               String(activeComposer?.getAttribute('data-lexical-editor') || '').toLowerCase() === 'true';
-            setComposerText(activeComposer, finalText, {
+            setComposerText(activeComposer, finalSendText, {
               operationId,
               reason: 'translate-first-set',
               originalText: original,
@@ -3007,7 +4035,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             let afterSet = getComposerText(activeComposer);
             console.log('[Ferdium Translator] After first set, composer text:', afterSet?.substring(0, 100));
 
-            if (!isComposerSynced(afterSet, finalText, original)) {
+            if (!isComposerSynced(afterSet, finalSendText, original)) {
               if (isLexicalFlow) {
                 console.log(
                   '[Ferdium Translator] Lexical composer not synced after first set, waiting settle checks',
@@ -3018,13 +4046,13 @@ export default class MessageTranslatorStore extends FeatureStore {
                   await sleep(settleDelay);
                   activeComposer = readComposer() || activeComposer;
                   afterSet = getComposerText(activeComposer);
-                  if (isComposerSynced(afterSet, finalText, original)) {
+                  if (isComposerSynced(afterSet, finalSendText, original)) {
                     break;
                   }
                 }
-                if (!isComposerSynced(afterSet, finalText, original)) {
+                if (!isComposerSynced(afterSet, finalSendText, original)) {
                   activeComposer = readComposer() || activeComposer;
-                  setComposerText(activeComposer, finalText, {
+                  setComposerText(activeComposer, finalSendText, {
                     operationId,
                     reason: 'translate-lexical-dom-fallback',
                     originalText: original,
@@ -3039,7 +4067,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                 activeComposer = readComposer() || activeComposer;
                 isLexicalFlow =
                   String(activeComposer?.getAttribute('data-lexical-editor') || '').toLowerCase() === 'true';
-                setComposerText(activeComposer, finalText, {
+                setComposerText(activeComposer, finalSendText, {
                   operationId,
                   reason: 'translate-second-set-force-dom',
                   originalText: original,
@@ -3050,10 +4078,10 @@ export default class MessageTranslatorStore extends FeatureStore {
                 console.log('[Ferdium Translator] After second set, composer text:', afterSet?.substring(0, 100));
               }
             }
-            if (!isComposerSynced(afterSet, finalText, original) && !isLexicalFlow) {
+            if (!isComposerSynced(afterSet, finalSendText, original) && !isLexicalFlow) {
               console.log('[Ferdium Translator] Still not synced, third attempt');
               activeComposer = readComposer() || activeComposer;
-              setComposerText(activeComposer, finalText, {
+              setComposerText(activeComposer, finalSendText, {
                 operationId,
                 reason: 'translate-third-set',
                 originalText: original,
@@ -3062,8 +4090,8 @@ export default class MessageTranslatorStore extends FeatureStore {
               afterSet = getComposerText(activeComposer);
               console.log('[Ferdium Translator] After third set, composer text:', afterSet?.substring(0, 100));
             }
-            if (!isComposerSynced(afterSet, finalText, original)) {
-              const fallbackOk = forceSyncViaFooterTextarea(finalText, original, operationId);
+            if (!isComposerSynced(afterSet, finalSendText, original)) {
+              const fallbackOk = forceSyncViaFooterTextarea(finalSendText, original, operationId);
               if (fallbackOk) {
                 await sleep(180);
                 const fallbackComposer = readComposer();
@@ -3074,19 +4102,21 @@ export default class MessageTranslatorStore extends FeatureStore {
                 );
               }
             }
-            if (!isComposerSynced(afterSet, finalText, original)) {
+            if (!isComposerSynced(afterSet, finalSendText, original)) {
               throw new Error('composer-update-failed');
             }
             console.log('[Ferdium Translator] Triggering native send', { operationId });
             state.bypassSendUntil = Date.now() + 2400;
             const outgoingRowCountBeforeSend = getOutgoingMessageRows().length;
-            await triggerNativeSend(preferClick, finalText, original, operationId);
-            queueLocalPreviewDecoration(
-              finalText,
-              original,
-              operationId,
-              outgoingRowCountBeforeSend,
-            );
+            await triggerNativeSend(preferClick, finalSendText, original, operationId);
+            if (!isGoogleChatProfile()) {
+              queueLocalPreviewDecoration(
+                finalSendText,
+                original,
+                operationId,
+                outgoingRowCountBeforeSend,
+              );
+            }
             console.log('[Ferdium Translator] ===== Translation and send completed =====', { operationId });
           } catch (error) {
             console.error('[Ferdium Translator] ===== Translation failed =====', error);
@@ -3135,6 +4165,58 @@ export default class MessageTranslatorStore extends FeatureStore {
             if (active.closest('[contenteditable="true"]')) return true;
           }
           return false;
+        };
+
+        const resolveComposerFromContextTarget = target => {
+          if (!isGoogleChatProfile()) {
+            return readComposer();
+          }
+          if (!(target instanceof Element)) {
+            return readComposer();
+          }
+
+          const roots = [
+            target.closest('form'),
+            target.closest('div[role="main"]'),
+            target.closest('[role="main"]'),
+            document.querySelector('div[role="main"]'),
+            document,
+          ].filter(Boolean);
+          const selectors = [
+            '[contenteditable="true"][role="textbox"]',
+            '[contenteditable="true"][aria-label*="Message"]',
+            '[contenteditable="true"][aria-label*="message"]',
+            '[contenteditable="true"][aria-label*="消息"]',
+            '[contenteditable="true"][aria-label*="訊息"]',
+            '[contenteditable="true"][aria-label*="输入"]',
+            '[contenteditable="true"][aria-label*="輸入"]',
+            'textarea[aria-label*="Message"]',
+            'textarea[aria-label*="message"]',
+            'textarea',
+            '[contenteditable="true"]',
+          ];
+
+          for (const root of roots) {
+            if (!(root instanceof Element) && root !== document) continue;
+            const candidates = [];
+            for (const selector of selectors) {
+              root.querySelectorAll?.(selector).forEach(node => {
+                if (!(node instanceof Element)) return;
+                if (!isVisibleComposer(node)) return;
+                candidates.push(node);
+              });
+            }
+            const candidatesWithText = candidates.filter(
+              node => String(getComposerText(node) || '').trim().length > 0,
+            );
+            const bestCandidate =
+              pickBestComposer(candidatesWithText) || pickBestComposer(candidates);
+            if (bestCandidate) {
+              return bestCandidate;
+            }
+          }
+
+          return readComposer();
         };
 
         const handleComposerKeyDown = event => {
@@ -3200,21 +4282,53 @@ export default class MessageTranslatorStore extends FeatureStore {
           translateAndSend(false, 'beforeinput-linebreak', event);
         };
 
-        addDomListener(document, 'keydown', handleComposerKeyDown, true);
-        addDomListener(document, 'beforeinput', handleComposerBeforeInput, true);
-
         const handleSendButtonEvent = event => {
           if (!isActiveInterceptorInstance()) return;
+          if (isGoogleChatProfile() && event?.type !== 'click') {
+            // Avoid blocking unrelated pointer/mouse interactions in Google Chat.
+            return;
+          }
           if (!state.settings.sendTranslation) {
+            try {
+              console.log(
+                '[Ferdium Translator] Send button ignored (sendTranslation=false)',
+              );
+            } catch (_e) {}
             return;
           }
           if (Date.now() < state.bypassSendUntil) {
+            try {
+              console.log('[Ferdium Translator] Send button ignored (bypass period)');
+            } catch (_e) {}
             return;
           }
-          if (!(event.target instanceof Node)) return;
-          if (!isSendButtonTarget(event.target)) return;
-          const composer = readComposer();
+          const eventTargetElement = resolveEventTargetElement(event);
+          if (!eventTargetElement) return;
+          if (!isSendButtonTarget(eventTargetElement)) return;
+          if (isGoogleChatProfile()) {
+            const activeSendButton = findSendButton();
+            if (
+              activeSendButton &&
+              eventTargetElement !== activeSendButton &&
+              !activeSendButton.contains(eventTargetElement)
+            ) {
+              return;
+            }
+          }
+          const composer =
+            resolveComposerFromContextTarget(eventTargetElement) || readComposer();
           if (!composer || !getComposerText(composer)) {
+            try {
+              console.log(
+                '[Ferdium Translator] Send button ignored (composer missing/empty): ' +
+                  JSON.stringify({
+                    hasComposer: !!composer,
+                    composerTextLength: String(getComposerText(composer) || '').length,
+                    profile: activeProfile,
+                    eventType: event.type,
+                  }),
+              );
+            } catch (_e) {}
             return;
           }
 
@@ -3235,16 +4349,84 @@ export default class MessageTranslatorStore extends FeatureStore {
           }
 
           try {
-            console.log('[Ferdium Translator] Intercepting send button, starting translation', {
-              event: getEventDebug(event),
-            });
+            console.log(
+              '[Ferdium Translator] Intercepting send button, starting translation: ' +
+                JSON.stringify({
+                  event: getEventDebug(event),
+                  profile: activeProfile,
+                  composerTextPreview: String(getComposerText(composer) || '').slice(
+                    0,
+                    100,
+                  ),
+                }),
+            );
           } catch (_e) {}
           translateAndSend(true, 'send-button', event);
         };
 
-        addDomListener(document, 'pointerdown', handleSendButtonEvent, true);
-        addDomListener(document, 'mousedown', handleSendButtonEvent, true);
-        addDomListener(document, 'click', handleSendButtonEvent, true);
+        const handleComposerSubmit = event => {
+          if (!isActiveInterceptorInstance()) return;
+          if (!isGoogleChatProfile()) return;
+          if (!state.settings.sendTranslation) return;
+          if (Date.now() < state.bypassSendUntil) return;
+
+          const eventTargetElement = resolveEventTargetElement(event);
+          const form = eventTargetElement?.closest?.('form');
+          if (!form) return;
+          const composer = resolveComposerFromContextTarget(form) || readComposer();
+          if (!composer || !getComposerText(composer)) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+          if (typeof event.stopImmediatePropagation === 'function') {
+            event.stopImmediatePropagation();
+          }
+          try {
+            console.log(
+              '[Ferdium Translator] Intercepting submit event, starting translation: ' +
+                JSON.stringify({
+                  profile: activeProfile,
+                  composerTextPreview: String(getComposerText(composer) || '').slice(
+                    0,
+                    100,
+                  ),
+                }),
+            );
+          } catch (_e) {}
+          translateAndSend(true, 'form-submit', event);
+        };
+
+        const attachSendAndSubmitListeners = doc => {
+          if (!doc || doc.__ferdiumTranslatorListenersAttached) return;
+          try {
+            doc.__ferdiumTranslatorListenersAttached = true;
+            addDomListener(doc, 'pointerdown', handleSendButtonEvent, true);
+            addDomListener(doc, 'mousedown', handleSendButtonEvent, true);
+            addDomListener(doc, 'click', handleSendButtonEvent, true);
+            addDomListener(doc, 'submit', handleComposerSubmit, true);
+            addDomListener(doc, 'keydown', handleComposerKeyDown, true);
+            addDomListener(doc, 'beforeinput', handleComposerBeforeInput, true);
+          } catch (_e) {}
+        };
+        attachSendAndSubmitListeners(document);
+        if (isGoogleChatProfile()) {
+          try {
+            document.querySelectorAll('iframe').forEach(iframe => {
+              const doc = iframe.contentDocument;
+              if (doc) attachSendAndSubmitListeners(doc);
+            });
+          } catch (_e) {}
+          const iframeAttachInterval = setInterval(() => {
+            if (!isActiveInterceptorInstance()) return;
+            try {
+              document.querySelectorAll('iframe').forEach(iframe => {
+                const doc = iframe.contentDocument;
+                if (doc) attachSendAndSubmitListeners(doc);
+              });
+            } catch (_e) {}
+          }, 2500);
+          registerCleanup(() => clearInterval(iframeAttachInterval));
+        }
         ensureIncomingObserver();
         ensureOutgoingHistoryObserver();
         scheduleIncomingScan('bootstrap', 380);
@@ -3270,20 +4452,8 @@ export default class MessageTranslatorStore extends FeatureStore {
           if (settings) {
             // 淇濈暀鐢ㄦ埛閫夋嫨鐨勬墍鏈夎缃紝鍖呮嫭 translatorEngine 鍜岃瑷€璁剧疆
             const oldSettings = { ...state.settings };
-            state.settings = {
-              ...state.settings,
-              ...settings,
-            };
-            // Keep sendTranslation enabled by default when setting is missing.
-            if (state.settings.sendTranslation === undefined) {
-              state.settings.sendTranslation = true;
-            }
-            if (state.settings.receiveTranslation === undefined) {
-              state.settings.receiveTranslation = true;
-            }
-            if (state.settings.showOriginalText === undefined) {
-              state.settings.showOriginalText = false;
-            }
+            state.settings = normalizeIncomingSettingsPatch(settings);
+            syncSettingsToChildFrames(state.settings);
             console.log('[Ferdium Translator] Settings updated:', {
               old: oldSettings,
               new: state.settings,
@@ -3301,7 +4471,7 @@ export default class MessageTranslatorStore extends FeatureStore {
         addIpcListener('translator:configure', handleTranslatorConfigure);
 
         // 鍙戦€佸垵濮嬪寲瀹屾垚娑堟伅鍒颁富杩涚▼锛岃繖鏍峰彲浠ュ湪涓绘帶鍒跺彴鐪嬪埌
-        ipcRenderer.sendToHost('translator:initialized', {
+        sendToHostSafe('translator:initialized', {
           serviceId: '${serviceId}',
           settings: state.settings,
           instanceId,
@@ -3379,6 +4549,56 @@ export default class MessageTranslatorStore extends FeatureStore {
               after: String(after || '').substring(0, 120),
             };
           };
+          window.__ferdiumTranslatorDiagnose = () => {
+            const composer = readComposer();
+            const sendBtn = findSendButton();
+            const candidatesComposer = [];
+            try {
+              document.querySelectorAll('div[contenteditable="true"], textarea, [contenteditable="true"]').forEach((el, i) => {
+                if (!(el instanceof Element)) return;
+                const rect = el.getBoundingClientRect();
+                const visible = rect.width > 0 && rect.height > 0;
+                candidatesComposer.push({
+                  index: i,
+                  tag: el.tagName,
+                  role: el.getAttribute('role'),
+                  ariaLabel: (el.getAttribute('aria-label') || '').slice(0, 80),
+                  id: (el.id || '').slice(0, 40),
+                  className: String(el.className || '').slice(0, 60),
+                  visible,
+                });
+              });
+            } catch (_err) {}
+            const candidatesSend = [];
+            try {
+              document.querySelectorAll('button, [role="button"]').forEach((el, i) => {
+                if (!(el instanceof Element)) return;
+                const aria = String(el.getAttribute('aria-label') || '');
+                const testId = String(el.getAttribute('data-testid') || '');
+                const title = String(el.getAttribute('title') || '');
+                const text = String(el.textContent || '').trim().slice(0, 40);
+                const combined = (aria + ' ' + testId + ' ' + title + ' ' + text).toLowerCase();
+                if (!combined.includes('send') && !combined.includes('发送') && !combined.includes('發送')) return;
+                candidatesSend.push({
+                  index: i,
+                  tag: el.tagName,
+                  ariaLabel: aria.slice(0, 80),
+                  dataTestid: testId.slice(0, 40),
+                  title: title.slice(0, 40),
+                  textPreview: text.slice(0, 30),
+                });
+              });
+            } catch (_err) {}
+            const out = {
+              profile: activeProfile,
+              composerFound: !!composer,
+              sendButtonFound: !!sendBtn,
+              candidatesComposer,
+              candidatesSend,
+            };
+            console.log('[Ferdium Translator] Diagnose:', JSON.stringify(out, null, 2));
+            return out;
+          };
         } catch (_e) {}
 
         return 'ok';
@@ -3396,7 +4616,30 @@ export default class MessageTranslatorStore extends FeatureStore {
 
     let status: string;
     try {
-      status = await service.webview.executeJavaScript(script, true);
+      if (interceptorPlatform === 'googlechat') {
+        const wcId = (service.webview as any)?.getWebContentsId?.();
+        if (typeof wcId === 'number') {
+          try {
+            status = await ipcRenderer.invoke(
+              'translator:inject-in-all-frames',
+              {
+                webContentsId: wcId,
+                script,
+              },
+            );
+          } catch (invokeError) {
+            console.warn(
+              '[Ferdium Translator Store] All-frames inject failed, fallback to executeJavaScript',
+              invokeError,
+            );
+            status = await service.webview.executeJavaScript(script, true);
+          }
+        } else {
+          status = await service.webview.executeJavaScript(script, true);
+        }
+      } else {
+        status = await service.webview.executeJavaScript(script, true);
+      }
       console.log('[Ferdium Translator Store] Script execution result:', {
         serviceId,
         status,
@@ -3525,6 +4768,8 @@ export default class MessageTranslatorStore extends FeatureStore {
       'sv',
       'hu',
       'vi',
+      'id',
+      'hi',
     ]);
     return supported.has(normalized) ? normalized : '';
   };
