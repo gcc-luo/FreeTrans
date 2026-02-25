@@ -65,18 +65,13 @@ if (-not $SkipDepsInstall) {
     throw "Build directory not found: $BuildDir"
   }
 
-  $LockSrc = Join-Path $RepoRoot 'pnpm-lock.yaml'
-  $LockDst = Join-Path $BuildDir 'pnpm-lock.yaml'
-  Copy-Item $LockSrc $LockDst -Force
-
-  # Install production dependencies inside ./build to avoid runtime missing modules.
+  # Use the shared dependency preparation script:
+  # - installs production deps in ./build
+  # - repairs sqlite3 native bindings for packaged runtime
   Invoke-External -FilePath 'pnpm' -Arguments @(
-    'install',
-    '--prod',
-    '--frozen-lockfile',
-    '--ignore-workspace',
-    '--ignore-scripts'
-  ) -WorkingDirectory $BuildDir
+    'run',
+    'build:prepare-app-deps'
+  ) -WorkingDirectory $RepoRoot
 } else {
   Write-Host '>> Skip dependency install in build directory'
 }
