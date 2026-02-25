@@ -6,7 +6,7 @@ import { Oval } from 'react-loader-spinner';
 import type { FerdiumStores } from '../../../@types/stores.types';
 import { DEFAULT_LOADER_COLOR } from '../../../config';
 
-const styles = () => ({
+const styles = {
   container: {
     position: 'relative',
     display: 'flex',
@@ -14,7 +14,7 @@ const styles = () => ({
     alignItems: 'center',
     height: 'inherit',
   },
-});
+};
 
 interface IProps extends WithStylesProps<typeof styles> {
   className?: string;
@@ -57,4 +57,4 @@ class LoaderComponent extends Component<IProps> {
   }
 }
 
-export default injectStyle(styles, { injectTheme: true })(LoaderComponent);
+export default injectStyle(styles)(LoaderComponent);

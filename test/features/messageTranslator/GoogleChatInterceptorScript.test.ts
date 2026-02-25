@@ -369,13 +369,11 @@ describe('Google Chat interceptor script', () => {
       expect(script).toContain("String(original || '').trim()");
     });
 
-    it('applies local outgoing decoration for Google Chat with split blocks', async () => {
+    it('keeps local preview decoration path gated for non-Google profiles', async () => {
       const script = await captureInjectedScript();
       expect(script).toContain('queueLocalPreviewDecoration(');
-      expect(script).toContain('const LOCAL_PREVIEW_TRANSLATION_ATTR');
-      expect(script).toContain(
-        "translationBlock.setAttribute(LOCAL_PREVIEW_TRANSLATION_ATTR, '1')",
-      );
+      expect(script).toContain('if (!isGoogleChatProfile()) {');
+      expect(script).not.toContain('LOCAL_PREVIEW_TRANSLATION_ATTR');
       expect(script).toContain(
         'messageTextContainer.appendChild(originalBlock)',
       );

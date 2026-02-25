@@ -61,6 +61,7 @@ asarUnpack:
   - ./assets/fonts
   - ./assets/images/taskbar
   - ./assets/images/icons
+  - ./node_modules/sqlite3/lib/binding
 
 mac:
   hardenedRuntime: true
