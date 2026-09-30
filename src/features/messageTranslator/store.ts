@@ -572,7 +572,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           return false;
         };
 
-        const interceptorVersion = '2026-02-21-v17';
+        const interceptorVersion = '2026-09-30-v18';
         const interceptorPlatform = ${interceptorPlatformJson};
         if (
           window.__ferdiumTranslatorInterceptorLoaded &&
@@ -1136,12 +1136,12 @@ export default class MessageTranslatorStore extends FeatureStore {
             const style = document.createElement('style');
             style.id = LOCAL_PREVIEW_STYLE_ID;
             style.textContent = [
-              '.ferdium-translator-local-translation{display:block;white-space:pre-wrap;color:#111827 !important;}',
+              '.ferdium-translator-local-translation{display:block;white-space:pre-wrap;color:inherit !important;}',
               '.ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24) !important;}',
-              '.ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e !important;opacity:0.96;}',
-              '.ferdium-translator-incoming-translation{display:block;white-space:pre-wrap;color:#111827;}',
+              '.ferdium-translator-local-original{display:block;white-space:pre-wrap;color:inherit !important;opacity:0.78;}',
+              '.ferdium-translator-incoming-translation{display:block;white-space:pre-wrap;color:inherit;}',
               '.ferdium-translator-incoming-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',
-              '.ferdium-translator-incoming-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',
+              '.ferdium-translator-incoming-original{display:block;white-space:pre-wrap;color:inherit;opacity:0.78;}',
               '.ferdium-translator-incoming-mismatch{display:block;margin:2px 0 4px;color:#b54708;font-size:11px;line-height:1.25;}',
             ].join('');
             (document.head || document.documentElement || document.body)?.appendChild(
@@ -1766,13 +1766,73 @@ export default class MessageTranslatorStore extends FeatureStore {
             row.setAttribute(LOCAL_PREVIEW_TEXT_ATTR, comparableTranslated);
             row.setAttribute(LOCAL_PREVIEW_OP_ATTR, String(operationId || ''));
             try {
-              console.log('[Ferdium Translator] Local preview decorated', {
-                operationId,
-                translatedPreview: String(translatedText || '').substring(0, 80),
-                originalPreview: String(originalText || '').substring(0, 80),
-              });
+              console.log(
+                '[Ferdium Translator] Local preview decorated ' +
+                  JSON.stringify({ operationId }),
+              );
             } catch (_e) {}
             return true;
+          }
+
+          if (isWhatsAppProfile()) {
+            const selectors = [
+              '[data-testid="msg-text"]',
+              'span.selectable-text.copyable-text',
+              'span.copyable-text',
+              'div.copyable-text',
+              'span',
+            ];
+            const candidates = [];
+            const seen = new Set();
+            for (const selector of selectors) {
+              for (const candidate of Array.from(document.querySelectorAll(selector))) {
+                if (!(candidate instanceof Element) || seen.has(candidate)) continue;
+                seen.add(candidate);
+                candidates.push({ candidate, selector });
+              }
+            }
+
+            for (let index = candidates.length - 1; index >= 0; index -= 1) {
+              const { candidate, selector } = candidates[index];
+              if (selectors.some(textSelector => candidate.querySelector(textSelector))) {
+                continue;
+              }
+              if (candidate.closest('div.message-in')) continue;
+              const candidateComparable = toComparableText(
+                String(candidate.innerText || candidate.textContent || ''),
+              );
+              if (!isLikelyOutgoingMatch(candidateComparable, comparableTranslated)) {
+                continue;
+              }
+              const rect = candidate.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) continue;
+              const row = candidate.closest('div.message-out');
+              if (!row && rect.right < window.innerWidth * 0.55) continue;
+
+              const applied = appendOriginalPreviewBlock(
+                candidate,
+                translatedText,
+                originalText,
+                operationId,
+              );
+              if (!applied) continue;
+              candidate.setAttribute(LOCAL_PREVIEW_ATTR, '1');
+              candidate.setAttribute(LOCAL_PREVIEW_TEXT_ATTR, comparableTranslated);
+              candidate.setAttribute(LOCAL_PREVIEW_OP_ATTR, String(operationId || ''));
+              if (row instanceof Element) {
+                row.setAttribute(LOCAL_PREVIEW_ATTR, '1');
+                row.setAttribute(LOCAL_PREVIEW_TEXT_ATTR, comparableTranslated);
+                row.setAttribute(LOCAL_PREVIEW_OP_ATTR, String(operationId || ''));
+              }
+              try {
+                console.log('[Ferdium Translator] Local preview decorated via text fallback', {
+                  operationId,
+                  selector,
+                  hasOutgoingRow: row instanceof Element,
+                });
+              } catch (_e) {}
+              return true;
+            }
           }
 
           // Google Chat can delay row text normalization; fallback to the latest row
@@ -1823,11 +1883,10 @@ export default class MessageTranslatorStore extends FeatureStore {
                 minimumRowIndex,
               );
               try {
-                console.log('[Ferdium Translator] Local preview attempt', {
-                  operationId,
-                  delayMs,
-                  applied,
-                });
+                console.log(
+                  '[Ferdium Translator] Local preview attempt ' +
+                    JSON.stringify({ operationId, delayMs, applied }),
+                );
               } catch (_e) {}
             }, delayMs);
             registerCleanup(() => {
@@ -1991,6 +2050,90 @@ export default class MessageTranslatorStore extends FeatureStore {
                 row.setAttribute(LOCAL_PREVIEW_OP_ATTR, 'history-' + reason);
               } finally {
                 row.removeAttribute(OUTGOING_HISTORY_LOOKUP_PENDING_ATTR);
+              }
+            }
+
+            if (isWhatsAppProfile()) {
+              const selectors = [
+                '[data-testid="msg-text"]',
+                'span.selectable-text.copyable-text',
+                'span.copyable-text',
+                'div.copyable-text',
+                'span',
+              ];
+              const candidates = [];
+              const seen = new Set();
+              for (const selector of selectors) {
+                for (const candidate of Array.from(document.querySelectorAll(selector))) {
+                  if (!(candidate instanceof Element) || seen.has(candidate)) continue;
+                  seen.add(candidate);
+                  candidates.push({ candidate, selector });
+                }
+              }
+
+              for (let index = candidates.length - 1; index >= 0; index -= 1) {
+                const { candidate, selector } = candidates[index];
+                if (selectors.some(textSelector => candidate.querySelector(textSelector))) {
+                  continue;
+                }
+                if (candidate.closest('[' + LOCAL_PREVIEW_ATTR + '="1"]')) continue;
+                if (candidate.getAttribute(LOCAL_PREVIEW_ATTR) === '1') continue;
+                if (candidate.closest('div.message-in')) continue;
+                const row = candidate.closest('div.message-out');
+                const rect = candidate.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) continue;
+                if (!row && rect.right < window.innerWidth * 0.55) continue;
+                const translatedText = normalizeCompareText(
+                  candidate.innerText || candidate.textContent || '',
+                );
+                if (!translatedText) continue;
+
+                candidate.setAttribute(OUTGOING_HISTORY_LOOKUP_PENDING_ATTR, '1');
+                try {
+                  // eslint-disable-next-line no-await-in-loop
+                  const originalText = await lookupOutgoingOriginalFromCache(
+                    translatedText,
+                    reason + ':' + selector,
+                  );
+                  if (
+                    !originalText ||
+                    toComparableText(originalText) === toComparableText(translatedText)
+                  ) {
+                    continue;
+                  }
+                  const applied = appendOriginalPreviewBlock(
+                    candidate,
+                    translatedText,
+                    originalText,
+                    'history-' + reason,
+                  );
+                  if (!applied) continue;
+                  candidate.setAttribute(LOCAL_PREVIEW_ATTR, '1');
+                  candidate.setAttribute(
+                    LOCAL_PREVIEW_TEXT_ATTR,
+                    toComparableText(translatedText),
+                  );
+                  candidate.setAttribute(
+                    LOCAL_PREVIEW_OP_ATTR,
+                    'history-' + reason,
+                  );
+                  if (row instanceof Element) {
+                    row.setAttribute(LOCAL_PREVIEW_ATTR, '1');
+                    row.setAttribute(
+                      LOCAL_PREVIEW_TEXT_ATTR,
+                      toComparableText(translatedText),
+                    );
+                    row.setAttribute(LOCAL_PREVIEW_OP_ATTR, 'history-' + reason);
+                  }
+                  try {
+                    console.log(
+                      '[Ferdium Translator] Outgoing history preview restored via text fallback ' +
+                        JSON.stringify({ reason, selector }),
+                    );
+                  } catch (_e) {}
+                } finally {
+                  candidate.removeAttribute(OUTGOING_HISTORY_LOOKUP_PENDING_ATTR);
+                }
               }
             }
           } finally {
@@ -3612,6 +3755,7 @@ export default class MessageTranslatorStore extends FeatureStore {
 
             outgoingHistoryObserver = new MutationObserver(mutations => {
               if (!isActiveInterceptorInstance()) return;
+              ensureWhatsAppComposerKeydownListener();
               let shouldScan = false;
 
               for (const mutation of mutations) {
@@ -4229,18 +4373,41 @@ export default class MessageTranslatorStore extends FeatureStore {
             } catch (_e) {}
             return;
           }
-          const composer = readComposer();
+          const eventPath =
+            typeof event.composedPath === 'function' ? event.composedPath() : [];
+          const currentTargetComposer =
+            event.currentTarget instanceof Element &&
+            event.currentTarget.matches('[contenteditable="true"], textarea')
+              ? event.currentTarget
+              : null;
+          const composerFromEventPath = Array.from(eventPath || []).find(
+            node =>
+              node instanceof Element &&
+              node.matches('[contenteditable="true"], textarea') &&
+              isVisibleComposer(node),
+          );
+          const composer =
+            currentTargetComposer || composerFromEventPath || readComposer();
           if (!composer) {
             try {
               console.warn('[Ferdium Translator] Composer not found on Enter key');
             } catch (_e) {}
             return;
           }
-          const active = document.activeElement;
+          const eventBelongsToComposer =
+            currentTargetComposer === composer ||
+            Array.from(eventPath || []).some(
+              node => node === composer || (node instanceof Node && composer.contains(node)),
+            ) ||
+            (event.target instanceof Node && composer.contains(event.target));
+          const active = composer.ownerDocument?.activeElement || document.activeElement;
           const composerFocused =
             active === composer ||
             (active instanceof Element && composer.contains(active));
-          if (!isEditableTarget(event.target) && !composerFocused) {
+          const shouldHandleEnter = isWhatsAppProfile()
+            ? eventBelongsToComposer || composerFocused
+            : isEditableTarget(event.target) || composerFocused;
+          if (!shouldHandleEnter) {
             try {
               console.log('[Ferdium Translator] Not focused on composer, skipping');
             } catch (_e) {}
@@ -4260,6 +4427,22 @@ export default class MessageTranslatorStore extends FeatureStore {
           event.preventDefault();
           event.stopPropagation();
           translateAndSend(false, 'keydown-enter', event);
+        };
+
+        const composerKeydownListeners = new WeakSet();
+        const ensureWhatsAppComposerKeydownListener = () => {
+          if (!isWhatsAppProfile() || !isActiveInterceptorInstance()) return;
+          const composer = readComposer();
+          if (!composer || composerKeydownListeners.has(composer)) return;
+          composerKeydownListeners.add(composer);
+          addDomListener(composer, 'keydown', handleComposerKeyDown, true);
+          try {
+            console.log('[Ferdium Translator] Bound Enter handler to WhatsApp composer', {
+              tag: composer.tagName,
+              role: composer.getAttribute('role'),
+              ariaLabel: composer.getAttribute('aria-label'),
+            });
+          } catch (_e) {}
         };
 
         const handleComposerBeforeInput = event => {
@@ -4397,9 +4580,11 @@ export default class MessageTranslatorStore extends FeatureStore {
         };
 
         const attachSendAndSubmitListeners = doc => {
-          if (!doc || doc.__ferdiumTranslatorListenersAttached) return;
+          if (!doc) return;
+          ensureWhatsAppComposerKeydownListener();
+          if (doc.__ferdiumTranslatorListenersAttached === instanceId) return;
           try {
-            doc.__ferdiumTranslatorListenersAttached = true;
+            doc.__ferdiumTranslatorListenersAttached = instanceId;
             addDomListener(doc, 'pointerdown', handleSendButtonEvent, true);
             addDomListener(doc, 'mousedown', handleSendButtonEvent, true);
             addDomListener(doc, 'click', handleSendButtonEvent, true);
@@ -4407,6 +4592,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             addDomListener(doc, 'keydown', handleComposerKeyDown, true);
             addDomListener(doc, 'beforeinput', handleComposerBeforeInput, true);
           } catch (_e) {}
+          ensureWhatsAppComposerKeydownListener();
         };
         attachSendAndSubmitListeners(document);
         if (isGoogleChatProfile()) {
