@@ -9,6 +9,7 @@ import {
   dialog,
   globalShortcut,
   ipcMain,
+  nativeImage,
   session,
   webContents as electronWebContents,
 } from 'electron';
@@ -535,6 +536,14 @@ app.commandLine.appendSwitch('disable-features', 'CrossOriginOpenerPolicy');
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
+  if (isMac && app.dock) {
+    app.dock.setIcon(
+      nativeImage.createFromPath(
+        asarPath(join(__dirname, 'assets/images/icons/256x256.png')),
+      ),
+    );
+  }
+
   attachMainConsoleToFileLog();
   const logFilePath = initializeFileLogger();
   writeToFileLog('info', 'main', 'File logger initialized', {
