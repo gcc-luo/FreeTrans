@@ -9,6 +9,9 @@ import type { RealStores } from '../../../stores';
 
 const debug = require('../../../preload-safe-debug')('Ferdium:Services');
 
+const RESPONSIVE_ZOOM_REFERENCE_WIDTH = 720;
+const RESPONSIVE_ZOOM_MIN_FACTOR = 0.55;
+
 interface IProps {
   service: ServiceModel;
   setWebviewReference: (options: {
@@ -23,6 +26,16 @@ interface IProps {
 @observer
 class ServiceWebview extends Component<IProps> {
   @observable webview: ElectronWebView | null = null;
+
+  private resizeObserver: ResizeObserver | undefined;
+
+  private observedContainer: Element | undefined;
+
+  private baseZoomFactor: number | undefined;
+
+  private lastResponsiveZoomFactor: number | undefined;
+
+  private lastResponsiveScale = 1;
 
   constructor(props: IProps) {
     super(props);
@@ -65,9 +78,68 @@ class ServiceWebview extends Component<IProps> {
   }
 
   componentWillUnmount(): void {
+    this.resizeObserver?.disconnect();
     const { service, detachService } = this.props;
     detachService({ service });
   }
+
+  private observeResponsiveWidth = (): void => {
+    const webview = this.webview;
+    if (!webview?.isReady()) return;
+
+    const container = (webview.view as any).closest(
+      '.services__webview',
+    ) as Element | null;
+    if (!container) return;
+
+    if (!this.resizeObserver) {
+      this.resizeObserver = new ResizeObserver(this.updateResponsiveZoom);
+    }
+
+    if (container !== this.observedContainer) {
+      this.resizeObserver.disconnect();
+      this.observedContainer = container;
+      this.resizeObserver.observe(container);
+    }
+
+    this.updateResponsiveZoom();
+  };
+
+  private updateResponsiveZoom = (): void => {
+    const webview = this.webview;
+    const container = this.observedContainer as HTMLElement | undefined;
+    if (!webview?.isReady() || !container) return;
+
+    const currentZoomFactor = (webview.view as any).getZoomFactor?.() ?? 1;
+    if (
+      this.lastResponsiveZoomFactor !== undefined &&
+      Math.abs(currentZoomFactor - this.lastResponsiveZoomFactor) > 0.01
+    ) {
+      // Preserve manual zoom changes when the responsive scale is recalculated.
+      this.baseZoomFactor = currentZoomFactor / this.lastResponsiveScale;
+    } else if (this.baseZoomFactor === undefined) {
+      this.baseZoomFactor = currentZoomFactor;
+    }
+
+    const translatorPanelOpen = Boolean(
+      document.querySelector('.translator-panel.is-open'),
+    );
+    const width = container.getBoundingClientRect().width;
+    const responsiveScale = translatorPanelOpen
+      ? Math.max(
+          RESPONSIVE_ZOOM_MIN_FACTOR,
+          Math.min(1, width / RESPONSIVE_ZOOM_REFERENCE_WIDTH),
+        )
+      : 1;
+    const targetZoomFactor = this.baseZoomFactor * responsiveScale;
+
+    if (Math.abs(currentZoomFactor - targetZoomFactor) > 0.01) {
+      webview.setZoomFactor(targetZoomFactor);
+    }
+
+    this.lastResponsiveScale = responsiveScale;
+    this.lastResponsiveZoomFactor = targetZoomFactor;
+  };
 
   refocusWebview(): void {
     const { webview } = this;
@@ -92,6 +164,13 @@ class ServiceWebview extends Component<IProps> {
   }
 
   @action _setWebview(webview): void {
+    if (this.webview !== webview) {
+      this.resizeObserver?.disconnect();
+      this.observedContainer = undefined;
+      this.baseZoomFactor = undefined;
+      this.lastResponsiveZoomFactor = undefined;
+      this.lastResponsiveScale = 1;
+    }
     this.webview = webview;
   }
 
@@ -147,6 +226,7 @@ class ServiceWebview extends Component<IProps> {
           // This prevents us from immediately attaching listeners such as `did-stop-load`:
           // https://github.com/ferdium/ferdium-app/issues/157
           setTimeout(() => {
+            this.observeResponsiveWidth();
             setWebviewReference({
               serviceId: service.id,
               webview: this.webview.view,
