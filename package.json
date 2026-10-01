@@ -46,7 +46,7 @@
     "build": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder",
     "build:mac:dmg": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder --mac dmg --config.npmRebuild=false",
     "build:release:mac": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder --mac dmg --publish never --config.npmRebuild=false",
-    "build:release:win": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder --win nsis --publish never",
+    "build:release:win": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder --win nsis --publish never --config.npmRebuild=false",
     "release:verify-version": "node scripts/verify-release-version.mjs",
     "release:verify-artifacts": "node scripts/verify-release-artifacts.mjs",
     "build:prepare-app-deps": "node ./scripts/prepare-build-app-deps.mjs",
