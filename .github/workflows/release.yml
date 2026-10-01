@@ -38,7 +38,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:verify-version "${{ github.ref_name }}"
-      - run: pnpm build:release:mac --${{ matrix.arch }}
+      - name: Build macOS installer
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            unset CSC_LINK CSC_KEY_PASSWORD
+          fi
+          pnpm build:release:mac --${{ matrix.arch }}
       - run: pnpm release:verify-artifacts mac out ${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:

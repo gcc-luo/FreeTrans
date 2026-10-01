@@ -51,7 +51,11 @@ const run = (command, args) => {
     cwd: rootDir,
     stdio: 'inherit',
     env: process.env,
+    shell: process.platform === 'win32',
   });
+  if (result.error) {
+    throw result.error;
+  }
   if (result.status !== 0) {
     throw new Error(
       `${command} ${args.join(' ')} failed with exit code ${result.status ?? 1}`,
