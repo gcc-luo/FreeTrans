@@ -3,7 +3,7 @@
   "productName": "FreeTrans",
   "desktopName": "freetrans.desktop",
   "appId": "com.bolttool.freetrans",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Translate conversations across messaging services with FreeTrans.",
   "author": "FreeTrans Contributors",
   "license": "Apache-2.0",

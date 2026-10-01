@@ -53,6 +53,7 @@ rpm:
 
 # This is the notarization process which allows the app to be opened after download with the minimal warning.
 afterSign: ./build-helpers/notarize.js
+afterPack: ./build-helpers/adhoc-sign.js
 
 protocols:
   name: FreeTrans
