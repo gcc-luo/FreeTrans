@@ -52,7 +52,7 @@ class ServiceWebview extends Component<IProps> {
           });
           this.webview.view.addEventListener('did-navigate', () => {
             if (this.props.service._webview) {
-              document.title = `Ferdium - ${this.props.service.name} ${
+              document.title = `FreeTrans - ${this.props.service.name} ${
                 this.props.service.dialogTitle
                   ? ` - ${this.props.service.dialogTitle}`
                   : ''
@@ -80,7 +80,7 @@ class ServiceWebview extends Component<IProps> {
       webview.view.blur();
       webview.view.focus();
       window.setTimeout(() => {
-        document.title = `Ferdium - ${this.props.service.name} ${
+        document.title = `FreeTrans - ${this.props.service.name} ${
           this.props.service.dialogTitle
             ? ` - ${this.props.service.dialogTitle}`
             : ''

@@ -178,11 +178,11 @@ export const menuItems = defineMessages({
   },
   reloadFerdium: {
     id: 'menu.view.reloadFerdium',
-    defaultMessage: 'Reload Ferdium',
+    defaultMessage: 'Reload FreeTrans',
   },
   lockFerdium: {
     id: 'menu.view.lockFerdium',
-    defaultMessage: 'Lock Ferdium',
+    defaultMessage: 'Lock FreeTrans',
   },
   reloadTodos: {
     id: 'menu.view.reloadTodos',
@@ -222,7 +222,7 @@ export const menuItems = defineMessages({
   },
   debugInfoCopiedHeadline: {
     id: 'menu.help.debugInfoCopiedHeadline',
-    defaultMessage: 'Ferdium Debug Information',
+    defaultMessage: 'FreeTrans Debug Information',
   },
   debugInfoCopiedBody: {
     id: 'menu.help.debugInfoCopiedBody',
@@ -262,7 +262,7 @@ export const menuItems = defineMessages({
   },
   about: {
     id: 'menu.app.about',
-    defaultMessage: 'About Ferdium',
+    defaultMessage: 'About FreeTrans',
   },
   checkForUpdates: {
     id: 'menu.app.checkForUpdates',
@@ -987,8 +987,8 @@ class FranzMenu implements StoresProps {
         dialog
           .showMessageBox({
             type: 'info',
-            title: 'Ferdium',
-            message: 'Ferdium',
+            title: 'FreeTrans',
+            message: 'FreeTrans',
             detail: aboutAppDetails,
             buttons: [
               intl.formatMessage(menuItems.ok),

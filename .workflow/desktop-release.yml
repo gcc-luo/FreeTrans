@@ -1,6 +1,6 @@
 version: '1.0'
 name: ferdium-desktop-release
-displayName: Ferdium Desktop Release
+displayName: FreeTrans Desktop Release
 
 triggers:
   trigger: auto

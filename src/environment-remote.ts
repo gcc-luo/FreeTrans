@@ -12,6 +12,8 @@ import {
 } from './config';
 import { api as electronApi } from './electron-util';
 import { isWindows } from './environment';
+// @ts-expect-error Cannot find module './package.json' or its corresponding type declarations.
+import { productName } from './package.json';
 
 export const { app } = electronApi;
 export const ferdiumVersion: string = app.getVersion();
@@ -39,6 +41,9 @@ export const isDevMode: boolean =
 if (isDevMode) {
   app.setPath('userData', join(app.getPath('appData'), `${app.name}Dev`));
 }
+
+// Keep the existing user data path while setting the app's display name.
+app.setName(productName);
 
 export const userDataPath = (...segments: string[]): string => {
   return join(app.getPath('userData'), ...[segments].flat());
@@ -76,5 +81,5 @@ export const API: string = api;
 export const API_VERSION: string = 'v1';
 export const WS_API: string = wsApi;
 export const WEBSITE: string = web;
-// For deeplink protocol: 'ferdium' or 'ferdium-dev' if we want '{DEEPLINK_PROTOCOL_CLIENT}://'
-export const protocolClient = isDevMode ? 'ferdium-dev' : 'ferdium';
+// For deeplink protocol: 'freetrans' or 'freetrans-dev' if we want '{DEEPLINK_PROTOCOL_CLIENT}://'
+export const protocolClient = isDevMode ? 'freetrans-dev' : 'freetrans';

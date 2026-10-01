@@ -11,7 +11,7 @@ import { onAuthGoToReleaseNotes } from '../helpers/update-helpers';
 const messages = defineMessages({
   updateAvailable: {
     id: 'infobar.updateAvailable',
-    defaultMessage: 'A new update for Ferdium is available.',
+    defaultMessage: 'A new update for FreeTrans is available.',
   },
   changelog: {
     id: 'infobar.buttonChangelog',

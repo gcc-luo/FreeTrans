@@ -94,7 +94,7 @@ const messages = defineMessages({
   },
   trapLinkClicks: {
     id: 'settings.service.form.trapLinkClicks',
-    defaultMessage: 'Open URLs within Ferdium',
+    defaultMessage: 'Open URLs within FreeTrans',
   },
   useFavicon: {
     id: 'settings.service.form.useFavicon',

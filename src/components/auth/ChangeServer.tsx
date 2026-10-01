@@ -30,7 +30,7 @@ const messages = defineMessages({
   },
   warning: {
     id: 'changeserver.warning',
-    defaultMessage: 'Extra settings offered by Ferdium will not be saved',
+    defaultMessage: 'Extra settings offered by FreeTrans will not be saved',
   },
   customServerLabel: {
     id: 'changeserver.customServerLabel',
@@ -66,7 +66,7 @@ class ChangeServer extends Component<IProps> {
           label: this.props.intl.formatMessage(messages.label),
           value: this.props.server,
           options: [
-            { value: this.ferdiumServer, label: 'Ferdium (Default)' },
+            { value: this.ferdiumServer, label: 'FreeTrans (Default)' },
             { value: this.franzServer, label: 'Franz' },
             {
               value: this.defaultServers.includes(this.props.server)

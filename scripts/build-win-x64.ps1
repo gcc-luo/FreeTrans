@@ -23,7 +23,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
   throw 'Cannot read version from package.json'
 }
 
-$InstallerPath = Join-Path $RepoRoot ("out\Ferdium-win-AutoSetup-{0}-x64.exe" -f $Version)
+$InstallerPath = Join-Path $RepoRoot ("out\FreeTrans-win-AutoSetup-{0}-x64.exe" -f $Version)
 
 function Invoke-External {
   param(
@@ -50,7 +50,7 @@ function Invoke-External {
   }
 }
 
-Write-Host '=== Ferdium Windows x64 Installer Build ==='
+Write-Host '=== FreeTrans Windows x64 Installer Build ==='
 Write-Host "RepoRoot: $RepoRoot"
 Write-Host "Version : $Version"
 

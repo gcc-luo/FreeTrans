@@ -41,7 +41,7 @@ const messages = defineMessages({
   },
   supportFerdium: {
     id: 'settings.navigation.supportFerdium',
-    defaultMessage: 'About Ferdium',
+    defaultMessage: 'About FreeTrans',
   },
   logout: {
     id: 'settings.navigation.logout',

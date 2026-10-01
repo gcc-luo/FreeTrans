@@ -250,7 +250,7 @@ async function getOrCreateRelease() {
     body: JSON.stringify({
       tag_name: tag,
       name: tag,
-      body: `Ferdium ${tag} 桌面端安装包。`,
+      body: `FreeTrans ${tag} 桌面端安装包。`,
       prerelease: tagVersion.includes('-'),
       target_commitish: commit.stdout.trim(),
     }),

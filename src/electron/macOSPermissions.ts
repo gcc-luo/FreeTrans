@@ -69,7 +69,7 @@ export const askFormacOSPermissions = async (
       type: 'info',
       message: 'Enable Screen Sharing',
       detail:
-        'To enable screen sharing for some services, Ferdium needs the permission to record your screen.',
+        'To enable screen sharing for some services, FreeTrans needs the permission to record your screen.',
       buttons: ['Allow screen sharing', 'No', 'Ask me later'],
       defaultId: 0,
       cancelId: 2,

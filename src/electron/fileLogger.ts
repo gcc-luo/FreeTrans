@@ -6,7 +6,7 @@ import { inspect } from 'node:util';
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
-const LOG_FILE_PREFIX = 'ferdium-app';
+const LOG_FILE_PREFIX = 'freetrans-app';
 const MAX_LOG_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_LOG_FILE_BACKUPS = 7;
 

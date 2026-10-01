@@ -27,7 +27,7 @@ const messages = defineMessages({
   info: {
     id: 'feature.publishDebugInfo.info',
     defaultMessage:
-      "Publishing your debug information helps us find issues and errors in Ferdium. By publishing your debug information you accept Ferdium Debugger's privacy policy and terms of service",
+      "Publishing your debug information helps us find issues and errors in FreeTrans. By publishing your debug information you accept FreeTrans Debugger's privacy policy and terms of service",
   },
   error: {
     id: 'feature.publishDebugInfo.error',

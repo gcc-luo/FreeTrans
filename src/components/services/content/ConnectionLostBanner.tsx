@@ -13,7 +13,7 @@ import Icon from '../../ui/icon';
 const messages = defineMessages({
   text: {
     id: 'connectionLostBanner.message',
-    defaultMessage: 'Oh no! Ferdium lost the connection to {name}.',
+    defaultMessage: 'Oh no! FreeTrans lost the connection to {name}.',
   },
   moreInformation: {
     id: 'connectionLostBanner.informationLink',

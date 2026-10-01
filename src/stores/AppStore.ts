@@ -58,7 +58,7 @@ const executablePath = isMac
     ? process.env.PORTABLE_EXECUTABLE_FILE
     : process.execPath;
 const autoLauncher = new AutoLaunch({
-  name: 'Ferdium',
+  name: 'FreeTrans',
   path: executablePath,
 });
 
@@ -276,7 +276,7 @@ export default class AppStore extends TypedStore {
       }
     });
 
-    // Handle deep linking (ferdium://)
+    // Handle deep linking (freetrans://)
     ipcRenderer.on('navigateFromDeepLink', (_, data) => {
       debug('Navigate from deep link', data);
       let { url } = data;
@@ -356,16 +356,16 @@ export default class AppStore extends TypedStore {
         getTranslatedText(
           this.locale,
           'app.welcomeNotification.title',
-          // `Welcome to Ferdium ${ferdiumVersion}`,
+          // `Welcome to FreeTrans ${ferdiumVersion}`,
           // { version: ferdiumVersion },
-          `Welcome to Ferdium ${ferdiumVersion.split('.')[0]}`,
+          `Welcome to FreeTrans ${ferdiumVersion.split('.')[0]}`,
           { version: ferdiumVersion.split('.')[0] },
         ),
         {
           body: getTranslatedText(
             this.locale,
             'app.welcomeNotification.body',
-            'Have a wonderful day & happy messaging.',
+            'Have a wonderful day & happy translating.',
           ),
         },
       );
@@ -805,7 +805,7 @@ export default class AppStore extends TypedStore {
 
   _getDefaultLocale() {
     return getLocale({
-      locale: ferdiumLocale,
+      locale: DEFAULT_APP_SETTINGS.locale,
       locales,
       fallbackLocale: DEFAULT_APP_SETTINGS.fallbackLocale,
     });

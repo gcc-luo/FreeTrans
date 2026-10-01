@@ -48,7 +48,7 @@ export default class TrayIcon {
     this.mainWindow = firstWindow;
 
     // listen to window events to be able to set correct string
-    // to tray menu ('Hide Ferdium' / 'Show Ferdium')
+    // to tray menu ('Hide FreeTrans' / 'Show FreeTrans')
     this.mainWindow.on('hide', () => {
       this._updateTrayMenu(null);
     });
@@ -76,13 +76,13 @@ export default class TrayIcon {
           tray.mainWindow.isVisible() && tray.mainWindow.isFocused()
             ? getTranslatedText(
                 tray.currentLocale,
-                'tray.hideFerdium',
-                'Hide Ferdium',
+                'tray.hideFreeTrans',
+                'Hide FreeTrans',
               )
             : getTranslatedText(
                 tray.currentLocale,
-                'tray.showFerdium',
-                'Show Ferdium',
+                'tray.showFreeTrans',
+                'Show FreeTrans',
               ),
         click() {
           tray._toggleWindow();
@@ -108,8 +108,8 @@ export default class TrayIcon {
       {
         label: getTranslatedText(
           tray.currentLocale,
-          'tray.quitFerdium',
-          'Quit Ferdium',
+          'tray.quitFreeTrans',
+          'Quit FreeTrans',
         ),
         click() {
           app.quit();
@@ -147,7 +147,7 @@ export default class TrayIcon {
     }
 
     this.tray = new Tray(this._getAsset('tray', INDICATOR_TRAY_PLAIN));
-    this.tray.setToolTip('Ferdium');
+    this.tray.setToolTip('FreeTrans');
 
     this.trayMenu = Menu.buildFromTemplate(this.trayMenuTemplate(this));
     if (isLinux) {

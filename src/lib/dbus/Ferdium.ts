@@ -6,7 +6,7 @@ export type UnreadServices = [string, number, number][];
 
 export default class Ferdium extends dbus.interface.Interface {
   constructor(private readonly dbus: DBus) {
-    super('org.ferdium.Ferdium');
+    super('com.bolttool.freetrans');
   }
 
   emitMutedChanged(): void {

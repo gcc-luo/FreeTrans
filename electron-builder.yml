@@ -2,7 +2,7 @@ directories:
   app: ./build
   output: ./out
 
-appId: "org.ferdium.ferdium-app"
+appId: "com.bolttool.freetrans"
 
 publish:
   provider: github
@@ -15,7 +15,7 @@ snap:
   hooks: ./build-helpers/snap-hooks
   publish:
     provider: snapStore
-  description: 'Ferdium is your cross-platform messaging app / former heir to the throne of Austria-Hungary which brings your chat & messaging services together into one application. For enabling webcam access you need to connect "camera" plug to snap, and for microphone with PulseAudio the "audio-record" plug. This can be done in Snap GUI or via command: `snap connect ferdium:camera; snap connect ferdium:audio-record`.'
+  description: 'FreeTrans is a cross-platform translation app.'
 
 nsis:
   perMachine: false
@@ -25,7 +25,7 @@ nsis:
 
 portable:
   artifactName: "${productName}-${os}-Portable-${version}-${arch}.${ext}"
-  unpackDirName: "Ferdium-Unpacked"
+  unpackDirName: "FreeTrans-Unpacked"
 
 dmg:
   background: ./build-helpers/images/dmgInstaller.tiff
@@ -53,8 +53,8 @@ rpm:
 afterSign: ./build-helpers/notarize.js
 
 protocols:
-  name: Ferdium
-  schemes: [ferdium]
+  name: FreeTrans
+  schemes: [freetrans]
 
 asarUnpack:
   - ./recipes
@@ -105,10 +105,10 @@ win:
 linux:
   icon: ./build-helpers/images/icons
   category: Network;InstantMessaging;
-  executableName: ferdium
-  synopsis: "Messaging app for WhatsApp, Slack, Telegram, Gmail, Google Chat, and many more."
-  # Note: Please keep the description as a single-line string, as this will become the Comment in the ferdium.desktop Linux launcher file, which requires a single line.
-  description: 'Desktop app bringing all your messaging services into one installable'
+  executableName: freetrans
+  synopsis: "FreeTrans desktop translation app"
+  # Note: Please keep the description as a single-line string, as this will become the Comment in the freetrans.desktop Linux launcher file, which requires a single line.
+  description: 'Desktop translation app for cross-language communication'
   artifactName: "${productName}-${os}-${version}.${ext}"
   target:
     - target: AppImage

@@ -18,21 +18,27 @@
   align-items: center;
   background: $theme-gray-lightest;
   border-radius: 30px;
+  box-sizing: border-box;
   color: $theme-gray-light;
   display: flex;
-  height: auto;
+  height: 44px;
   padding: 5px 10px;
   width: 100%;
 
   label {
+    align-items: center;
+    display: flex;
+    min-width: 0;
     width: 100%;
   }
 
   input {
     background: none;
     border: 0;
+    box-sizing: border-box;
     color: $theme-gray-light;
     flex: 1;
+    min-width: 0;
     padding-left: 10px;
   }
 }
