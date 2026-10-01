@@ -2,9 +2,16 @@
 
 These instructions apply when Codex works in this repository.
 
+## Core product purpose
+
+- FreeTrans's core purpose is to provide **real-time translation during conversations across chat and social applications**. Translation is the product's defining capability and the primary measure for product decisions.
+- Chat and social applications are the environments FreeTrans empowers users in; their integration is how the translation capability reaches conversations. FreeTrans is not intended to become a general-purpose chat client or a broad collection of unrelated productivity features.
+- Prioritize capabilities that help users understand incoming messages or translate their own messages while communicating across supported services. Keep new product descriptions, UI, and documentation centered on this translation workflow.
+- Before adding or changing a feature, make its connection to translating conversations in chat or social applications clear. Avoid scope that does not directly improve this core experience unless the user explicitly requests it.
+
 ## Project identity and boundaries
 
-- This project is **FreeTrans**, an Electron desktop translation tool for conversations in messaging services. It is based on Ferdium, but new product descriptions and translation-related features should present FreeTrans as a translation tool.
+- This project is **FreeTrans**, an Electron desktop tool for real-time translation in conversations across messaging and social services. It is based on Ferdium, whose existing capabilities provide the host and service integrations; they do not replace translation as FreeTrans's product focus.
 - Keep the existing Electron architecture, user data, and compatibility behavior intact unless the task explicitly requires changing them. Treat changes to the app ID (`com.bolttool.freetrans`), user data paths, persisted formats, and update source as migration-sensitive.
 - Keep changes focused. Do not reformat or rewrite unrelated upstream code, documentation, or generated files as part of a focused task.
 - Do not add secrets, access tokens, signing certificates, or passwords to the repository.
