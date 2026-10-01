@@ -45,6 +45,8 @@
     "manage-translations": "pnpm extract && pnpm compile && rimraf temp.json",
     "build": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder",
     "build:mac:dmg": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder --mac dmg --config.npmRebuild=false",
+    "build:release:mac": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder --mac dmg zip --publish always --config.npmRebuild=false",
+    "build:release:win": "preval-build-info-cli && node esbuild.mjs && pnpm run build:prepare-app-deps && electron-builder --win nsis --publish always",
     "build:prepare-app-deps": "node ./scripts/prepare-build-app-deps.mjs",
     "contributors": "all-contributors",
     "reformat-files": "prettier --ignore-path .eslintignore --write --cache \"**/*.{js,jsx,mjs,ts,tsx,scss}\"",

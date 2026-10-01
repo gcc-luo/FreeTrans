@@ -3,6 +3,10 @@ import { autoUpdater } from 'electron-updater';
 // eslint-disable-next-line import/no-cycle
 import { appEvents } from '../..';
 import { isSnap } from '../../environment';
+import {
+  getGiteeReleaseDownloadUrl,
+  getLatestGiteeRelease,
+} from './giteeReleases';
 
 const debug = require('../../preload-safe-debug')('Ferdium:ipcApi:autoUpdate');
 
@@ -19,17 +23,35 @@ export default (params: { mainWindow: BrowserWindow; settings: any }) => {
       autoUpdater.autoDownload = false;
     }
 
-    ipcMain.on('autoUpdate', (event, args) => {
+    ipcMain.on('autoUpdate', async (event, args) => {
       if (enableUpdate) {
         try {
           autoUpdater.autoInstallOnAppQuit = false;
-          autoUpdater.allowPrerelease = Boolean(
-            params.settings.app.get('beta'),
-          );
+          const allowPrerelease = Boolean(params.settings.app.get('beta'));
+          autoUpdater.allowPrerelease = allowPrerelease;
 
           if (args.action === 'check') {
             debug('checking for update');
-            autoUpdater.checkForUpdates();
+            if (['darwin', 'win32'].includes(process.platform)) {
+              const manifestName =
+                process.platform === 'darwin' ? 'latest-mac.yml' : 'latest.yml';
+              const release = await getLatestGiteeRelease(
+                allowPrerelease,
+                manifestName,
+              );
+              if (!release) {
+                params.mainWindow.webContents.send('autoUpdate', {
+                  available: false,
+                });
+                return;
+              }
+
+              autoUpdater.setFeedURL({
+                provider: 'generic',
+                url: getGiteeReleaseDownloadUrl(release.tag_name),
+              });
+            }
+            await autoUpdater.checkForUpdates();
           } else if (args.action === 'install') {
             // If the app is a snap, auto-updates are not supported.
             // The snap store will handle updates, therefore the user should be prompted to update through snap store.

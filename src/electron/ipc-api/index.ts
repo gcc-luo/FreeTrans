@@ -9,6 +9,7 @@ import focusState from './focusState';
 import languageDetect from './languageDetect';
 import localServer from './localServer';
 import processManager from './processManager';
+import releaseNotes from './releaseNotes';
 import sessionStorage from './sessionStorage';
 import settings from './settings';
 
@@ -23,6 +24,7 @@ export default (params: {
   appIndicator(params);
   download(params);
   processManager();
+  releaseNotes();
   localServer(params);
   languageDetect();
   dnd();

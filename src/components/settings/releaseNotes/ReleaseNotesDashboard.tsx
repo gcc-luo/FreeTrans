@@ -5,7 +5,7 @@ import { type IntlShape, defineMessages, injectIntl } from 'react-intl';
 import { ferdiumVersion } from '../../../environment-remote';
 import {
   getFerdiumVersion,
-  getUpdateInfoFromGH,
+  getUpdateInfoFromGitee,
 } from '../../../helpers/update-helpers';
 
 const messages = defineMessages({
@@ -16,12 +16,12 @@ const messages = defineMessages({
   connectionError: {
     id: 'settings.releasenotes.connectionError',
     defaultMessage:
-      'An error occurred when connecting to Github, please try again later.',
+      'An error occurred when connecting to Gitee, please try again later.',
   },
   connectionErrorPageMissing: {
     id: 'settings.releasenotes.connectionErrorPageMissing',
     defaultMessage:
-      'An error occurred when connecting to Github, the page you are looking for is missing.',
+      'An error occurred when connecting to Gitee, the page you are looking for is missing.',
   },
 });
 
@@ -43,7 +43,7 @@ class ReleaseNotesDashboard extends Component<IProps, IState> {
   async componentDidMount() {
     const { intl } = this.props;
 
-    const data = await getUpdateInfoFromGH(
+    const data = await getUpdateInfoFromGitee(
       window.location.href,
       ferdiumVersion,
       intl,

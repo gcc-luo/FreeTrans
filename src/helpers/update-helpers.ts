@@ -1,4 +1,4 @@
-import { Octokit } from '@octokit/core';
+import { ipcRenderer } from 'electron';
 import { type IntlShape, defineMessages } from 'react-intl';
 
 export const getFerdiumVersion = (
@@ -29,36 +29,29 @@ const messages = defineMessages({
   connectionError: {
     id: 'settings.releasenotes.connectionError',
     defaultMessage:
-      'An error occurred when connecting to Github, please try again later.',
+      'An error occurred when connecting to Gitee, please try again later.',
   },
   connectionErrorPageMissing: {
     id: 'settings.releasenotes.connectionErrorPageMissing',
     defaultMessage:
-      'An error occurred when connecting to Github, the page you are looking for is missing.',
+      'An error occurred when connecting to Gitee, the page you are looking for is missing.',
   },
 });
 
-export async function getUpdateInfoFromGH(
+export async function getUpdateInfoFromGitee(
   currentLocation: string,
   ferdiumVersion: string,
   intl: IntlShape,
 ): Promise<string> {
-  const octokit = new Octokit();
   try {
-    const response = await octokit.request(
-      'GET /repos/{owner}/{repo}/releases/tags/{tag}',
-      {
-        owner: 'ferdium',
-        repo: 'ferdium-app',
-        tag: getFerdiumVersion(currentLocation, ferdiumVersion),
-      },
+    const releaseNotes = await ipcRenderer.invoke(
+      'get-gitee-release-notes',
+      getFerdiumVersion(currentLocation, ferdiumVersion),
     );
 
-    if (response.status === 200) {
-      const json = response.data.body;
-      return json || `### ${intl.formatMessage(messages.connectionError)}`;
-    }
-    return `### ${intl.formatMessage(messages.connectionError)}`;
+    return (
+      releaseNotes || `### ${intl.formatMessage(messages.connectionError)}`
+    );
   } catch {
     return `### ${intl.formatMessage(messages.connectionErrorPageMissing)}`;
   }

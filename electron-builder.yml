@@ -64,6 +64,9 @@ asarUnpack:
   - ./node_modules/sqlite3/lib/binding
 
 mac:
+  publish:
+    provider: generic
+    url: https://gitee.com/BoltTool/ferdium-app/releases/download/latest
   hardenedRuntime: true
   gatekeeperAssess: false
   category: public.app-category.productivity
@@ -84,6 +87,9 @@ mac:
     NSFocusStatusUsageDescription: "This app requires focus access for DND functionality"
 
 win:
+  publish:
+    provider: generic
+    url: https://gitee.com/BoltTool/ferdium-app/releases/download/latest
   artifactName: "${productName}-${os}-Installer-${version}-${arch}.${ext}"
   icon: ./build-helpers/images/icon.ico
   target:

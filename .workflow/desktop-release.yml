@@ -1,0 +1,30 @@
+version: '1.0'
+name: ferdium-desktop-release
+displayName: Ferdium Desktop Release
+
+triggers:
+  trigger: auto
+  push:
+    tags:
+      include:
+        - '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'
+
+stages:
+  - stage:
+      name: build-and-publish
+      displayName: Build and publish desktop packages
+      strategy: naturally
+      trigger: auto
+      steps:
+        - step: shell@agent
+          name: release-macos
+          displayName: Build and publish signed macOS DMG and update package
+          hostGroupID: ferdium-macos
+          script: |
+            node scripts/release-desktop.mjs mac
+        - step: shell@agent
+          name: release-windows
+          displayName: Build and publish Windows installer and update metadata
+          hostGroupID: ferdium-windows
+          script: |
+            node scripts/release-desktop.mjs win

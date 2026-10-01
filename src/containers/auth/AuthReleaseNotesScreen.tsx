@@ -8,7 +8,7 @@ import Icon from '../../components/ui/icon';
 import { ferdiumVersion } from '../../environment-remote';
 import {
   getFerdiumVersion,
-  getUpdateInfoFromGH,
+  getUpdateInfoFromGitee,
 } from '../../helpers/update-helpers';
 import { openExternalUrl } from '../../helpers/url-helpers';
 
@@ -39,7 +39,7 @@ class AuthReleaseNotesScreen extends Component<IProps, IState> {
   async componentDidMount() {
     const { intl } = this.props;
 
-    const data = await getUpdateInfoFromGH(
+    const data = await getUpdateInfoFromGitee(
       window.location.href,
       ferdiumVersion,
       intl,
