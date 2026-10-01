@@ -3,10 +3,6 @@ import { autoUpdater } from 'electron-updater';
 // eslint-disable-next-line import/no-cycle
 import { appEvents } from '../..';
 import { isSnap } from '../../environment';
-import {
-  getGiteeReleaseDownloadUrl,
-  getLatestGiteeRelease,
-} from './giteeReleases';
 
 const debug = require('../../preload-safe-debug')('Ferdium:ipcApi:autoUpdate');
 
@@ -32,25 +28,6 @@ export default (params: { mainWindow: BrowserWindow; settings: any }) => {
 
           if (args.action === 'check') {
             debug('checking for update');
-            if (['darwin', 'win32'].includes(process.platform)) {
-              const manifestName =
-                process.platform === 'darwin' ? 'latest-mac.yml' : 'latest.yml';
-              const release = await getLatestGiteeRelease(
-                allowPrerelease,
-                manifestName,
-              );
-              if (!release) {
-                params.mainWindow.webContents.send('autoUpdate', {
-                  available: false,
-                });
-                return;
-              }
-
-              autoUpdater.setFeedURL({
-                provider: 'generic',
-                url: getGiteeReleaseDownloadUrl(release.tag_name),
-              });
-            }
             await autoUpdater.checkForUpdates();
           } else if (args.action === 'install') {
             // If the app is a snap, auto-updates are not supported.

@@ -6,6 +6,8 @@ appId: "com.bolttool.freetrans"
 
 publish:
   provider: github
+  owner: gcc-luo
+  repo: FreeTrans
 
 snap:
   base: core22
@@ -15,7 +17,7 @@ snap:
   hooks: ./build-helpers/snap-hooks
   publish:
     provider: snapStore
-  description: 'FreeTrans is a cross-platform translation app.'
+  description: 'FreeTrans translates conversations across messaging services.'
 
 nsis:
   perMachine: false
@@ -64,9 +66,6 @@ asarUnpack:
   - ./node_modules/sqlite3/lib/binding
 
 mac:
-  publish:
-    provider: generic
-    url: https://gitee.com/BoltTool/ferdium-app/releases/download/latest
   hardenedRuntime: true
   gatekeeperAssess: false
   category: public.app-category.productivity
@@ -87,9 +86,6 @@ mac:
     NSFocusStatusUsageDescription: "This app requires focus access for DND functionality"
 
 win:
-  publish:
-    provider: generic
-    url: https://gitee.com/BoltTool/ferdium-app/releases/download/latest
   artifactName: "${productName}-${os}-Installer-${version}-${arch}.${ext}"
   icon: ./build-helpers/images/icon.ico
   target:
@@ -97,8 +93,6 @@ win:
       arch: [x64, ia32, arm64]
     - target: portable
       arch: [x64, ia32, arm64]
-  # The name of the CN appearing in the certificate must be present in the publisherName list below
-  publisherName: ["Ferdium Contributors", "Ambroise Grau"]
   # Remove the verification for a signature to allow auto-update without signed certificate
   verifyUpdateCodeSignature: false
 
@@ -106,9 +100,9 @@ linux:
   icon: ./build-helpers/images/icons
   category: Network;InstantMessaging;
   executableName: freetrans
-  synopsis: "FreeTrans desktop translation app"
+  synopsis: 'Translate conversations across messaging services'
   # Note: Please keep the description as a single-line string, as this will become the Comment in the freetrans.desktop Linux launcher file, which requires a single line.
-  description: 'Desktop translation app for cross-language communication'
+  description: 'Translate messages in supported messaging services and translate text before sending.'
   artifactName: "${productName}-${os}-${version}.${ext}"
   target:
     - target: AppImage

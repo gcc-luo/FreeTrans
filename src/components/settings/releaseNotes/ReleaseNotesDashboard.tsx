@@ -4,8 +4,8 @@ import { Component } from 'react';
 import { type IntlShape, defineMessages, injectIntl } from 'react-intl';
 import { ferdiumVersion } from '../../../environment-remote';
 import {
-  getFerdiumVersion,
-  getUpdateInfoFromGitee,
+  getAppVersionTag,
+  getUpdateInfoFromGitHub,
 } from '../../../helpers/update-helpers';
 
 const messages = defineMessages({
@@ -16,12 +16,12 @@ const messages = defineMessages({
   connectionError: {
     id: 'settings.releasenotes.connectionError',
     defaultMessage:
-      'An error occurred when connecting to Gitee, please try again later.',
+      'An error occurred when connecting to GitHub, please try again later.',
   },
   connectionErrorPageMissing: {
     id: 'settings.releasenotes.connectionErrorPageMissing',
     defaultMessage:
-      'An error occurred when connecting to Gitee, the page you are looking for is missing.',
+      'An error occurred when connecting to GitHub, the release you are looking for is missing.',
   },
 });
 
@@ -43,7 +43,7 @@ class ReleaseNotesDashboard extends Component<IProps, IState> {
   async componentDidMount() {
     const { intl } = this.props;
 
-    const data = await getUpdateInfoFromGitee(
+    const data = await getUpdateInfoFromGitHub(
       window.location.href,
       ferdiumVersion,
       intl,
@@ -68,7 +68,7 @@ class ReleaseNotesDashboard extends Component<IProps, IState> {
       <div className="settings__main">
         <div className="settings__header">
           <span className="settings__header-item">
-            FreeTrans {getFerdiumVersion(window.location.href, ferdiumVersion)}{' '}
+            FreeTrans {getAppVersionTag(window.location.href, ferdiumVersion)}{' '}
             {' | '}
           </span>
           <span className="settings__header-item__secondary">

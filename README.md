@@ -1,64 +1,48 @@
 <p align="center">
-    <a href="https://ferdium.org">
-      <img src="./build-helpers/images/icon.png" alt="" width="250"/>
+    <a href="https://github.com/gcc-luo/FreeTrans">
+      <img src="./build-helpers/images/icon.png" alt="FreeTrans" width="180"/>
     </a>
 </p>
 <p align="center">
-    <a href="https://ferdium.org/download">
-      <img src="./branding/download.png" alt="Download" width="150"/>
+    <a href="https://github.com/gcc-luo/FreeTrans/releases">
+      <img src="./branding/download.png" alt="下载 FreeTrans" width="150"/>
     </a>
 </p>
 
-# Ferdium
+# FreeTrans
 
-[![Builds](https://github.com/ferdium/ferdium-app/actions/workflows/builds.yml/badge.svg)](https://github.com/ferdium/ferdium-app/actions/workflows/builds.yml)
-[![Crowdin](https://badges.crowdin.net/ferdium-app/localized.svg)](https://crowdin.com/project/ferdium-app)
+FreeTrans 是一款面向聊天软件的桌面翻译工具。它在 Ferdium 提供的多服务工作区中加入消息翻译能力，帮助你阅读收到的外语消息，并在发送前将内容翻译成对方使用的语言。
 
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/ferdium/ferdium-app?label=Latest%20Release%20Version)](https://github.com/ferdium/ferdium-app/releases/latest)
-[![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/ferdium/ferdium-app?include_prereleases&label=Pre-release%20Version)](https://github.com/ferdium/ferdium-app/releases)
-![GitHub all releases downloads](https://img.shields.io/github/downloads/ferdium/ferdium-app/total?label=Total%20Releases%20Downloaded&color=ac72b0)
-![GitHub downloads (by tag)](https://img.shields.io/github/downloads/ferdium/ferdium-app/latest/total?color=blue)
+[项目主页与源代码](https://github.com/gcc-luo/FreeTrans) · [问题反馈](https://github.com/gcc-luo/FreeTrans/issues) · [桌面版本下载](https://github.com/gcc-luo/FreeTrans/releases)
 
-[![Open Collective backers](https://img.shields.io/static/v1?label=Contribute%20on%20Open%20Collective&message=Donate%20to%20Ferdium&color=9cf&logo=open-collective)](https://opencollective.com/ferdium#category-CONTRIBUTE)
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-<a href='#contributors-'><img src='https://img.shields.io/badge/contributors-325-default.svg?logo=github&color=6c64e4' alt='Contributors'/></a>
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
+## 翻译功能
 
-- [Ferdium](#ferdium)
-  - [截图](#截图)
-  - [下载](#下载)
-  - [从 Ferdi 迁移](#从-ferdi-迁移)
-  - [样式定制](#样式定制)
-  - [贡献](#贡献)
-  - [贡献者 ✨](#贡献者-)
+- **接收消息翻译**：为支持的聊天服务设置目标语言，并查看消息翻译结果。
+- **发送前翻译**：输入消息后自动翻译，再发送到当前聊天服务。
+- **按服务配置**：分别设置翻译引擎、目标语言，以及收发消息翻译开关。
+- **多种翻译引擎**：支持 Google、百度、LibreTranslate 和 MyMemory；实际可用性取决于所选引擎的网络服务和账号配置。
 
-> 🤴🏽 [Franz](https://github.com/meetfranz/franz) 的硬分叉版本，添加了出色的功能并移除了不需要的功能。
+## 下载与更新
 
-Ferdium 是一款桌面应用程序，通过将您喜爱的应用整合到一个应用程序中来帮助您组织使用方式。它基于 Franz——一个已被数千人使用的软件——不同之处在于 Ferdium 提供了许多附加功能且不限制使用！此外，Ferdium 与您现有的 Franz 账户兼容，因此您可以无缝继续使用。请在 [ferdium.org](https://ferdium.org) 了解更多关于 Ferdium 及其功能的信息。
+FreeTrans 的 macOS 和 Windows 桌面安装包可在 [GitHub Releases](https://github.com/gcc-luo/FreeTrans/releases) 获取。应用内更新也从该发布源检查新版本。
+
+## 关于上游项目
+
+FreeTrans 基于开源项目 [Ferdium](https://github.com/ferdium/ferdium-app) 开发，保留了其多服务工作区、服务管理和桌面集成等能力，并在此基础上加入聊天消息翻译功能。感谢 Ferdium 及其贡献者提供的开源基础。
+
+以下内容介绍的是从上游项目继承的功能与兼容说明。
 
 ## 截图
 
 <details>
-<summary>切换截图</summary>
+<summary>工作区与服务管理界面</summary>
 <p align="center">
-<img alt="将所有消息服务集中在一个地方。" src="./branding/screenshots/hero.png">
-<em>"将所有消息服务集中在一个地方。"</em>
-<img alt="使用 Ferdium 工作区组织您的服务。" src="./branding/screenshots/workspaces.png">
-<em>"使用 Ferdium 工作区组织您的服务。"</em>
-<img alt="使用 Ferdium Todos 始终保持待办事项列表打开。" src="./branding/screenshots/todos.png">
-<em>"使用 Ferdium Todos 始终保持待办事项列表打开。"</em>
-<img alt="支持所有您的服务。" src="./branding/screenshots/service-store.png">
-<em>"支持所有您的服务。"</em>
+<img alt="Ferdium 工作区界面" src="./branding/screenshots/hero.png">
+<img alt="工作区管理界面" src="./branding/screenshots/workspaces.png">
+<img alt="待办事项界面" src="./branding/screenshots/todos.png">
+<img alt="服务列表界面" src="./branding/screenshots/service-store.png">
 </p>
 </details>
-
-## 下载
-
-👉 [ferdium.org/download](https://ferdium.org/download)
-
-资源文件可通过 [GitHub releases](https://github.com/ferdium/ferdium-app/releases/latest) 获取。
-
-_在 [ferdium.org/faq](https://ferdium.org/faq) 查找常见问题解答。_
 
 ## 从 Ferdi 迁移
 
@@ -80,7 +64,7 @@ _在 [ferdium.org/faq](https://ferdium.org/faq) 查找常见问题解答。_
 
 请阅读[贡献指南](贡献指南.md)以设置您的开发环境并开始贡献。
 
-## 贡献者 ✨
+## Ferdium 上游贡献者 ✨
 
 感谢这些优秀的人们（[表情符号说明](https://allcontributors.org/docs/en/emoji-key)）：
 

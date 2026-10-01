@@ -1,19 +1,19 @@
 import * as update_helpers from '../../src/helpers/update-helpers';
 
-describe('getFerdiumVersion', () => {
+describe('getAppVersionTag', () => {
   const baseVersion = '6.0.0-nightly.3';
   it(`returns ${baseVersion} for empty string`, () => {
-    const result = update_helpers.getFerdiumVersion('', baseVersion);
+    const result = update_helpers.getAppVersionTag('', baseVersion);
     expect(result).toEqual(`v${baseVersion}`);
   });
 
   it(`returns ${baseVersion} for ${baseVersion}`, () => {
-    const result = update_helpers.getFerdiumVersion('', baseVersion);
+    const result = update_helpers.getAppVersionTag('', baseVersion);
     expect(result).toEqual(`v${baseVersion}`);
   });
 
   it('returns v6.0.0-beta.3', () => {
-    const result = update_helpers.getFerdiumVersion(
+    const result = update_helpers.getAppVersionTag(
       '?version=6.0.0-beta.3',
       baseVersion,
     );
@@ -21,7 +21,7 @@ describe('getFerdiumVersion', () => {
   });
 
   it('returns v6.0.0', () => {
-    const result = update_helpers.getFerdiumVersion(
+    const result = update_helpers.getAppVersionTag(
       '?version=6.0.0',
       baseVersion,
     );
@@ -29,7 +29,7 @@ describe('getFerdiumVersion', () => {
   });
 
   it(`returns ${baseVersion}`, () => {
-    const result = update_helpers.getFerdiumVersion(
+    const result = update_helpers.getAppVersionTag(
       'http://test/=6.0.0',
       baseVersion,
     );
@@ -37,10 +37,7 @@ describe('getFerdiumVersion', () => {
   });
 
   it(`returns ${baseVersion} for missing 'version='`, () => {
-    const result = update_helpers.getFerdiumVersion(
-      'http://test/',
-      baseVersion,
-    );
+    const result = update_helpers.getAppVersionTag('http://test/', baseVersion);
     expect(result).toEqual(`v${baseVersion}`);
   });
 });
