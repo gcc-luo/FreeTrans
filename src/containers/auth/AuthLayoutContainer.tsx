@@ -60,14 +60,6 @@ class AuthLayoutContainer extends Component<IProps> {
           retryHealthCheck={actions.app.healthCheck}
           isHealthCheckLoading={app.healthCheckRequest.isExecuting}
           isFullScreen={app.isFullScreen}
-          installAppUpdate={actions.app.installUpdate}
-          appUpdateIsDownloaded={
-            app.updateStatus === app.updateStatusTypes.DOWNLOADED
-          }
-          updateVersion={app.updateVersion}
-          isUpdateAvailable={
-            app.updateStatus === app.updateStatusTypes.AVAILABLE
-          }
         >
           <Outlet />
         </AuthLayout>

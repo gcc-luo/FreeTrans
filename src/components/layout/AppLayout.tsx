@@ -16,7 +16,6 @@ import { Component as BasicAuth } from '../../features/basicAuth';
 import { Component as MessageTranslatorPanel } from '../../features/messageTranslator';
 import { Component as PublishDebugInfo } from '../../features/publishDebugInfo';
 import { Component as QuickSwitch } from '../../features/quickSwitch';
-import { updateVersionParse } from '../../helpers/update-helpers';
 import InfoBar from '../ui/InfoBar';
 import ErrorBoundary from '../util/ErrorBoundary';
 
@@ -24,7 +23,6 @@ import { isMac, isWindows } from '../../environment';
 import Todos from '../../features/todos/containers/TodosScreen';
 import { workspaceStore } from '../../features/workspaces';
 import WorkspaceSwitchingIndicator from '../../features/workspaces/components/WorkspaceSwitchingIndicator';
-import AppUpdateInfoBar from '../AppUpdateInfoBar';
 import Icon from '../ui/icon';
 
 import LockedScreen from '../../containers/auth/LockedScreen';
@@ -75,16 +73,12 @@ const toggleFullScreen = () => {
 
 interface IProps extends WrappedComponentProps, WithStylesProps<typeof styles> {
   settings: SettingsStore;
-  isUpdateAvailable: boolean;
-  updateVersion: string;
   isFullScreen: boolean;
   sidebar: React.ReactElement;
   workspacesDrawer: React.ReactElement;
   services: React.ReactElement;
   showServicesUpdatedInfoBar: boolean;
-  appUpdateIsDownloaded: boolean;
   authRequestFailed: boolean;
-  installAppUpdate: () => void;
   showRequiredRequestsError: boolean;
   areRequiredRequestsSuccessful: boolean;
   retryRequiredRequests: () => void;
@@ -92,7 +86,6 @@ interface IProps extends WrappedComponentProps, WithStylesProps<typeof styles> {
 }
 
 interface IState {
-  shouldShowAppUpdateInfoBar: boolean;
   shouldShowServicesUpdatedInfoBar: boolean;
 }
 
@@ -102,7 +95,6 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
     super(props);
 
     this.state = {
-      shouldShowAppUpdateInfoBar: true,
       shouldShowServicesUpdatedInfoBar: true,
     };
   }
@@ -115,16 +107,12 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
       sidebar,
       services,
       showServicesUpdatedInfoBar,
-      appUpdateIsDownloaded,
       authRequestFailed,
-      installAppUpdate,
       settings,
       showRequiredRequestsError,
       areRequiredRequestsSuccessful,
       retryRequiredRequests,
       areRequiredRequestsLoading,
-      updateVersion,
-      isUpdateAvailable,
     } = this.props;
 
     const { intl } = this.props;
@@ -207,16 +195,6 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
                       <Icon icon={mdiPowerPlug} />
                       {intl.formatMessage(messages.servicesUpdated)}
                     </InfoBar>
-                  )}
-                {(appUpdateIsDownloaded || isUpdateAvailable) &&
-                  this.state.shouldShowAppUpdateInfoBar && (
-                    <AppUpdateInfoBar
-                      onInstallUpdate={installAppUpdate}
-                      updateVersionParsed={updateVersionParse(updateVersion)}
-                      onHide={() => {
-                        this.setState({ shouldShowAppUpdateInfoBar: false });
-                      }}
-                    />
                   )}
                 <BasicAuth />
                 <QuickSwitch />

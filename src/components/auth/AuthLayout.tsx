@@ -11,11 +11,9 @@ import {
 import { type WrappedComponentProps, injectIntl } from 'react-intl';
 import { serverName } from '../../api/apiBase';
 import { GITHUB_FERDIUM_URL } from '../../config';
-import { isSnap, isWindows } from '../../environment';
+import { isWindows } from '../../environment';
 import { Component as PublishDebugInfo } from '../../features/publishDebugInfo';
-import { updateVersionParse } from '../../helpers/update-helpers';
 import globalMessages from '../../i18n/globalMessages';
-import AppUpdateInfoBar from '../AppUpdateInfoBar';
 import InfoBar from '../ui/InfoBar';
 import Link from '../ui/Link';
 import Icon from '../ui/icon';
@@ -28,26 +26,10 @@ export interface IProps extends WrappedComponentProps {
   retryHealthCheck: MouseEventHandler<HTMLButtonElement>;
   isHealthCheckLoading: boolean;
   isFullScreen: boolean;
-  installAppUpdate: MouseEventHandler<HTMLButtonElement>;
-  appUpdateIsDownloaded: boolean;
-  updateVersion: string;
-  isUpdateAvailable: boolean;
-}
-
-interface IState {
-  shouldShowAppUpdateInfoBar: boolean;
 }
 
 @observer
-class AuthLayout extends Component<IProps, IState> {
-  constructor(props: IProps) {
-    super(props);
-
-    this.state = {
-      shouldShowAppUpdateInfoBar: true,
-    };
-  }
-
+class AuthLayout extends Component<IProps> {
   render(): ReactElement {
     const {
       children,
@@ -57,11 +39,7 @@ class AuthLayout extends Component<IProps, IState> {
       retryHealthCheck,
       isHealthCheckLoading,
       isFullScreen,
-      installAppUpdate,
-      appUpdateIsDownloaded,
-      updateVersion,
       intl,
-      isUpdateAvailable,
     } = this.props;
 
     let serverNameParse = serverName();
@@ -83,16 +61,6 @@ class AuthLayout extends Component<IProps, IState> {
               {intl.formatMessage(globalMessages.notConnectedToTheInternet)}
             </InfoBar>
           )}
-          {(appUpdateIsDownloaded || (isSnap && isUpdateAvailable)) &&
-            this.state.shouldShowAppUpdateInfoBar && (
-              <AppUpdateInfoBar
-                onInstallUpdate={installAppUpdate}
-                updateVersionParsed={updateVersionParse(updateVersion)}
-                onHide={() => {
-                  this.setState({ shouldShowAppUpdateInfoBar: false });
-                }}
-              />
-            )}
           {isOnline && !isAPIHealthy && (
             <InfoBar
               type="danger"

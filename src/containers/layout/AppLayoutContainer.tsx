@@ -82,7 +82,7 @@ class AppLayoutContainer extends Component<IProps> {
 
     const { retryRequiredRequests } = this.props.actions.requests;
 
-    const { installUpdate, toggleMuteApp, toggleCollapseMenu } =
+    const { toggleMuteApp, toggleCollapseMenu } =
       this.props.actions.app;
 
     const { openSettings, closeSettings, openDownloads } =
@@ -178,24 +178,16 @@ class AppLayoutContainer extends Component<IProps> {
             settings={settings}
             isFullScreen={app.isFullScreen}
             showServicesUpdatedInfoBar={ui.showServicesUpdatedInfoBar}
-            appUpdateIsDownloaded={
-              app.updateStatus === app.updateStatusTypes.DOWNLOADED
-            }
             authRequestFailed={app.authRequestFailed}
             sidebar={sidebar}
             workspacesDrawer={workspacesDrawer}
             services={servicesContainer}
-            installAppUpdate={installUpdate}
             showRequiredRequestsError={requests.showRequiredRequestsError}
             areRequiredRequestsSuccessful={
               requests.areRequiredRequestsSuccessful
             }
             retryRequiredRequests={retryRequiredRequests}
             areRequiredRequestsLoading={requests.areRequiredRequestsLoading}
-            updateVersion={app.updateVersion}
-            isUpdateAvailable={
-              app.updateStatus === app.updateStatusTypes.AVAILABLE
-            }
           >
             <Outlet />
           </AppLayout>

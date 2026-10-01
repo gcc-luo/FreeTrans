@@ -32,7 +32,10 @@ import {
   userDataPath,
   userDataRecipesPath,
 } from '../../../environment-remote';
-import { updateVersionParse } from '../../../helpers/update-helpers';
+import {
+  onAuthGoToReleaseNotes,
+  updateVersionParse,
+} from '../../../helpers/update-helpers';
 import { openExternalUrl, openPath } from '../../../helpers/url-helpers';
 import globalMessages from '../../../i18n/globalMessages';
 import type Form from '../../../lib/Form';
@@ -253,11 +256,11 @@ const messages = defineMessages({
   },
   buttonInstallUpdate: {
     id: 'settings.app.buttonInstallUpdate',
-    defaultMessage: 'Download installer',
+    defaultMessage: 'Download update',
   },
   buttonShowChangelog: {
     id: 'settings.app.buttonShowChangelog',
-    defaultMessage: 'Show changelog',
+    defaultMessage: 'Release notes',
   },
   updateStatusSearching: {
     id: 'settings.app.updateStatusSearching',
@@ -494,16 +497,9 @@ class EditSettingsForm extends Component<IProps, IState> {
       intl,
     } = this.props;
 
-    const installUpdateMessage = isSnap
-      ? messages.updateAvailableSnap
-      : messages.buttonInstallUpdate;
-
-    let updateButtonLabelMessage = messages.buttonSearchForUpdate;
-    if (isCheckingForUpdates) {
-      updateButtonLabelMessage = messages.updateStatusSearching;
-    } else if (isUpdateAvailable) {
-      updateButtonLabelMessage = messages.updateStatusAvailable;
-    }
+    const updateButtonLabelMessage = isCheckingForUpdates
+      ? messages.updateStatusSearching
+      : messages.buttonSearchForUpdate;
 
     const {
       isLockingFeatureEnabled,
@@ -1312,87 +1308,78 @@ class EditSettingsForm extends Component<IProps, IState> {
                 </H2>
 
                 <Toggle {...form.$('automaticUpdates').bind()} />
-                {
+                <Toggle {...form.$('beta').bind()} />
+
+                <div className="settings__updates-actions">
+                  <Button
+                    buttonType="secondary"
+                    label={intl.formatMessage(updateButtonLabelMessage)}
+                    onClick={checkForUpdates}
+                    disabled={isCheckingForUpdates || !isOnline}
+                    busy={isCheckingForUpdates}
+                  />
+                  <Button
+                    buttonType="secondary"
+                    label={intl.formatMessage(messages.buttonShowChangelog)}
+                    onClick={() => {
+                      window.location.href = onAuthGoToReleaseNotes(
+                        window.location.href,
+                        updateVersionParse(updateVersion),
+                      );
+                    }}
+                  />
+                  <Button
+                    label={intl.formatMessage(messages.buttonInstallUpdate)}
+                    onClick={installUpdate}
+                    disabled={
+                      (!isUpdateAvailable && !updateIsReadyToInstall) || isSnap
+                    }
+                  />
+                </div>
+
+                <div className="settings__updates-status">
+                  <p>
+                    {intl.formatMessage(messages.currentVersion)}{' '}
+                    {ferdiumVersion}
+                  </p>
+                  {isUpdateAvailable || updateIsReadyToInstall ? (
+                    <p>
+                      {intl.formatMessage(messages.updateStatusAvailable)}{' '}
+                      {updateVersion}
+                    </p>
+                  ) : null}
+                  {noUpdateAvailable && (
+                    <p>{intl.formatMessage(messages.updateStatusUpToDate)}.</p>
+                  )}
+                  {isSnap && isUpdateAvailable && (
+                    <p>{intl.formatMessage(messages.updateAvailableSnap)}</p>
+                  )}
+                  {updateFailed && (
+                    <Infobox type="danger" icon="alert">
+                      &nbsp;An error occurred (check the console for more
+                      details)
+                    </Infobox>
+                  )}
+                </div>
+
+                {showServicesUpdatedInfoBar ? (
                   <>
-                    <>
-                      <div>
-                        <Toggle {...form.$('beta').bind()} />
-                        {isUpdateAvailable || updateIsReadyToInstall ? (
-                          <Button
-                            label={intl.formatMessage(installUpdateMessage)}
-                            onClick={installUpdate}
-                            disabled={isSnap}
-                            buttonType={isSnap ? 'secondary' : undefined}
-                          />
-                        ) : (
-                          <Button
-                            buttonType="secondary"
-                            label={intl.formatMessage(updateButtonLabelMessage)}
-                            onClick={checkForUpdates}
-                            disabled={
-                              isCheckingForUpdates ||
-                              isUpdateAvailable ||
-                              !isOnline
-                            }
-                            loaded={!isCheckingForUpdates || !isUpdateAvailable}
-                          />
-                        )}
-                        {(isUpdateAvailable || updateIsReadyToInstall) && (
-                          <Button
-                            className="settings__updates__changelog-button"
-                            label={intl.formatMessage(
-                              messages.buttonShowChangelog,
-                            )}
-                            onClick={() => {
-                              window.location.href = `#/releasenotes${updateVersionParse(
-                                updateVersion,
-                              )}`;
-                            }}
-                          />
-                        )}
-                        <br />
-                        <br />
-                      </div>
-                      <p>
-                        {intl.formatMessage(messages.currentVersion)}{' '}
-                        {ferdiumVersion}
-                      </p>
-                      {noUpdateAvailable && (
-                        <p>
-                          {intl.formatMessage(messages.updateStatusUpToDate)}.
-                        </p>
-                      )}
-                      {updateFailed && (
-                        <Infobox type="danger" icon="alert">
-                          &nbsp;An error occurred (check the console for more
-                          details)
-                        </Infobox>
-                      )}
-                    </>
-                    {showServicesUpdatedInfoBar ? (
-                      <>
-                        <p>
-                          <Icon icon={mdiPowerPlug} />
-                          {intl.formatMessage(messages.servicesUpdated)}
-                        </p>
-                        <Button
-                          label={intl.formatMessage(
-                            messages.buttonReloadServices,
-                          )}
-                          onClick={() => window.location.reload()}
-                        />
-                      </>
-                    ) : (
-                      <p>
-                        <Icon icon={mdiPowerPlug} />
-                        &nbsp;
-                        {intl.formatMessage(
-                          messages.servicesUpdateStatusUpToDate,
-                        )}
-                      </p>
-                    )}
+                    <p>
+                      <Icon icon={mdiPowerPlug} />
+                      {intl.formatMessage(messages.servicesUpdated)}
+                    </p>
+                    <Button
+                      label={intl.formatMessage(messages.buttonReloadServices)}
+                      onClick={() => window.location.reload()}
+                    />
                   </>
-                }
+                ) : (
+                  <p>
+                    <Icon icon={mdiPowerPlug} />
+                    &nbsp;
+                    {intl.formatMessage(messages.servicesUpdateStatusUpToDate)}
+                  </p>
+                )}
                 <p className="settings__message">
                   <Icon icon={mdiGithub} /> FreeTrans is based on Ferdium{' '}
                   <a
