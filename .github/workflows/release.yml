@@ -14,11 +14,19 @@ permissions:
 
 jobs:
   build-macos:
-    name: Build signed macOS packages
-    runs-on: macos-14
+    name: Build macOS ${{ matrix.arch }} installer
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+          - arch: x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
     env:
       CSC_LINK: ${{ secrets.CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK == '' && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -30,23 +38,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:verify-version "${{ github.ref_name }}"
-      - name: Require macOS signing credentials
-        run: |
-          if [ -z "$CSC_LINK" ] || [ -z "$CSC_KEY_PASSWORD" ]; then
-            echo 'Configure CSC_LINK and CSC_KEY_PASSWORD as GitHub Actions secrets for macOS auto-updates.' >&2
-            exit 1
-          fi
-      - run: pnpm build:release:mac
-      - run: pnpm release:verify-artifacts mac
+      - run: pnpm build:release:mac --${{ matrix.arch }}
+      - run: pnpm release:verify-artifacts mac out ${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
-          name: macos-release
+          name: macos-release-${{ matrix.arch }}
           if-no-files-found: error
-          path: |
-            out/*.dmg
-            out/*.zip
-            out/*.blockmap
-            out/latest-mac.yml
+          path: out/*.dmg
 
   build-windows:
     name: Build Windows packages
@@ -62,16 +60,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm release:verify-version "${{ github.ref_name }}"
-      - run: pnpm build:release:win
-      - run: pnpm release:verify-artifacts win
+      - run: pnpm build:release:win --x64
+      - run: pnpm release:verify-artifacts win out x64
       - uses: actions/upload-artifact@v4
         with:
           name: windows-release
           if-no-files-found: error
-          path: |
-            out/*.exe
-            out/*.blockmap
-            out/latest.yml
+          path: out/*.exe
 
   publish:
     name: Publish GitHub Release
@@ -91,14 +86,19 @@ jobs:
       - run: pnpm release:verify-version "${{ github.ref_name }}"
       - uses: actions/download-artifact@v4
         with:
-          name: macos-release
+          name: macos-release-arm64
+          path: artifacts/mac
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-release-x64
           path: artifacts/mac
       - uses: actions/download-artifact@v4
         with:
           name: windows-release
           path: artifacts/win
-      - run: pnpm release:verify-artifacts mac artifacts/mac
-      - run: pnpm release:verify-artifacts win artifacts/win
+      - run: pnpm release:verify-artifacts mac artifacts/mac arm64
+      - run: pnpm release:verify-artifacts mac artifacts/mac x64
+      - run: pnpm release:verify-artifacts win artifacts/win x64
       - uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
@@ -107,9 +107,4 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             artifacts/mac/*.dmg
-            artifacts/mac/*.zip
-            artifacts/mac/*.blockmap
-            artifacts/mac/latest-mac.yml
             artifacts/win/*.exe
-            artifacts/win/*.blockmap
-            artifacts/win/latest.yml

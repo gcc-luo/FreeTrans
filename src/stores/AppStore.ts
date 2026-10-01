@@ -156,7 +156,9 @@ export default class AppStore extends TypedStore {
     this.actions.app.setBadge.listen(this._setBadge.bind(this));
     this.actions.app.launchOnStartup.listen(this._launchOnStartup.bind(this));
     this.actions.app.openExternalUrl.listen(this._openExternalUrl.bind(this));
-    this.actions.app.checkForUpdates.listen(this._checkForUpdates.bind(this));
+    this.actions.app.checkForUpdates.listen(
+      this._checkForUpdates.bind(this, true),
+    );
     this.actions.app.installUpdate.listen(this._installUpdate.bind(this));
     this.actions.app.resetUpdateStatus.listen(
       this._resetUpdateStatus.bind(this),
@@ -582,8 +584,11 @@ export default class AppStore extends TypedStore {
     openExternalUrl(new URL(url));
   }
 
-  @action _checkForUpdates() {
-    if (this.isOnline && this.stores.settings.app.automaticUpdates) {
+  @action _checkForUpdates(manual = false) {
+    if (
+      this.isOnline &&
+      (manual || this.stores.settings.app.automaticUpdates)
+    ) {
       debug('_checkForUpdates: sending event to autoUpdate:check');
       this.updateStatus = this.updateStatusTypes.CHECKING;
       ipcRenderer.send('autoUpdate', {
@@ -597,7 +602,7 @@ export default class AppStore extends TypedStore {
   }
 
   @action _installUpdate() {
-    debug('_installUpdate: sending event to autoUpdate:install');
+    debug('_installUpdate: opening the release installer download');
     ipcRenderer.send('autoUpdate', {
       action: 'install',
     });

@@ -326,7 +326,7 @@ const messages = defineMessages({
   },
   automaticUpdates: {
     id: 'settings.app.form.automaticUpdates',
-    defaultMessage: 'Enable updates',
+    defaultMessage: 'Check for updates in the background',
   },
   enableTodos: {
     id: 'settings.app.form.enableTodos',

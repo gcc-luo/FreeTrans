@@ -5,7 +5,7 @@ import type { MouseEventHandler } from 'react';
 import InfoBar from './ui/InfoBar';
 import Icon from './ui/icon';
 
-import { isSnap, isWinPortable } from '../environment';
+import { isSnap } from '../environment';
 import { onAuthGoToReleaseNotes } from '../helpers/update-helpers';
 
 const messages = defineMessages({
@@ -19,7 +19,7 @@ const messages = defineMessages({
   },
   buttonInstallUpdate: {
     id: 'infobar.buttonInstallUpdate',
-    defaultMessage: 'Restart & install update',
+    defaultMessage: 'Download installer',
   },
   isSnapMessage: {
     id: 'infobar.isSnapMessage',
@@ -45,7 +45,7 @@ const AppUpdateInfoBar = (props: IProps) => {
       }
       onClick={event => {
         // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        !isWinPortable && !isSnap && onInstallUpdate(event);
+        !isSnap && onInstallUpdate(event);
       }}
       onHide={onHide}
     >

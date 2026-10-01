@@ -23,7 +23,6 @@ import {
 import {
   isMac,
   isSnap,
-  isWinPortable,
   isWindows,
   lockFerdiumShortcutKey,
 } from '../../../environment';
@@ -254,7 +253,7 @@ const messages = defineMessages({
   },
   buttonInstallUpdate: {
     id: 'settings.app.buttonInstallUpdate',
-    defaultMessage: 'Restart & install update',
+    defaultMessage: 'Download installer',
   },
   buttonShowChangelog: {
     id: 'settings.app.buttonShowChangelog',
@@ -266,7 +265,7 @@ const messages = defineMessages({
   },
   updateStatusAvailable: {
     id: 'settings.app.updateStatusAvailable',
-    defaultMessage: 'Update available, downloading...',
+    defaultMessage: 'Update available',
   },
   updateAvailableSnap: {
     id: 'settings.app.updateAvailableSnap',
@@ -1313,13 +1312,12 @@ class EditSettingsForm extends Component<IProps, IState> {
                 </H2>
 
                 <Toggle {...form.$('automaticUpdates').bind()} />
-                {automaticUpdates && !isWinPortable && (
+                {
                   <>
                     <>
                       <div>
                         <Toggle {...form.$('beta').bind()} />
-                        {updateIsReadyToInstall ||
-                        (isSnap && isUpdateAvailable) ? (
+                        {isUpdateAvailable || updateIsReadyToInstall ? (
                           <Button
                             label={intl.formatMessage(installUpdateMessage)}
                             onClick={installUpdate}
@@ -1332,7 +1330,6 @@ class EditSettingsForm extends Component<IProps, IState> {
                             label={intl.formatMessage(updateButtonLabelMessage)}
                             onClick={checkForUpdates}
                             disabled={
-                              !automaticUpdates ||
                               isCheckingForUpdates ||
                               isUpdateAvailable ||
                               !isOnline
@@ -1395,7 +1392,7 @@ class EditSettingsForm extends Component<IProps, IState> {
                       </p>
                     )}
                   </>
-                )}
+                }
                 <p className="settings__message">
                   <Icon icon={mdiGithub} /> FreeTrans is based on Ferdium{' '}
                   <a

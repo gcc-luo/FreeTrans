@@ -20,7 +20,7 @@ import { updateVersionParse } from '../../helpers/update-helpers';
 import InfoBar from '../ui/InfoBar';
 import ErrorBoundary from '../util/ErrorBoundary';
 
-import { isMac, isSnap, isWindows } from '../../environment';
+import { isMac, isWindows } from '../../environment';
 import Todos from '../../features/todos/containers/TodosScreen';
 import { workspaceStore } from '../../features/workspaces';
 import WorkspaceSwitchingIndicator from '../../features/workspaces/components/WorkspaceSwitchingIndicator';
@@ -208,8 +208,7 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
                       {intl.formatMessage(messages.servicesUpdated)}
                     </InfoBar>
                   )}
-                {automaticUpdates &&
-                  (appUpdateIsDownloaded || (isSnap && isUpdateAvailable)) &&
+                {(appUpdateIsDownloaded || isUpdateAvailable) &&
                   this.state.shouldShowAppUpdateInfoBar && (
                     <AppUpdateInfoBar
                       onInstallUpdate={installAppUpdate}
