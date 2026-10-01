@@ -107,7 +107,6 @@ export default class WorkspacesStore extends FeatureStore {
       this._openDrawerWithSettingsReaction,
       this._cleanupInvalidServiceReferences,
       this._setActiveServiceOnWorkspaceSwitchReaction,
-      this._activateLastUsedWorkspaceReaction,
       this._setWorkspaceBeingEditedReaction,
     ]);
     this._registerReactions(this._allReactions);
@@ -327,17 +326,6 @@ export default class WorkspacesStore extends FeatureStore {
           serviceId: workspaceServices[0].id,
           keepActiveRoute: true,
         });
-      }
-    }
-  };
-
-  _activateLastUsedWorkspaceReaction = () => {
-    debug('_activateLastUsedWorkspaceReaction');
-    if (!this.activeWorkspace && this.userHasWorkspaces) {
-      const { lastActiveWorkspace } = this.settings;
-      if (lastActiveWorkspace) {
-        const workspace = this._getWorkspaceById(lastActiveWorkspace);
-        if (workspace) this._setActivateWorkspace({ workspace });
       }
     }
   };

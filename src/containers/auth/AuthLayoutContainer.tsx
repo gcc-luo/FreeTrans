@@ -6,7 +6,7 @@ import {
   injectIntl,
 } from 'react-intl';
 import { ThemeProvider } from 'react-jss';
-import { Outlet } from 'react-router-dom';
+import { Navigate, Outlet } from 'react-router-dom';
 import type { StoresProps } from '../../@types/ferdium-components.types';
 import AuthLayout from '../../components/auth/AuthLayout';
 import AppLoader from '../../components/ui/AppLoader';
@@ -49,6 +49,10 @@ class AuthLayoutContainer extends Component<IProps> {
           />
         </ThemeProvider>
       );
+    }
+
+    if (stores.settings.loaded) {
+      return <Navigate to="/" replace />;
     }
 
     return (

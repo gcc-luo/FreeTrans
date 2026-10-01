@@ -6,11 +6,12 @@ import { Component, type ReactElement } from 'react';
 import ElectronWebView from 'react-electron-web-view';
 import type ServiceModel from '../../../models/Service';
 import type { RealStores } from '../../../stores';
+import {
+  getResponsiveZoomScale,
+  resolveBaseZoomFactor,
+} from './responsive-zoom';
 
 const debug = require('../../../preload-safe-debug')('Ferdium:Services');
-
-const RESPONSIVE_ZOOM_REFERENCE_WIDTH = 720;
-const RESPONSIVE_ZOOM_MIN_FACTOR = 0.55;
 
 interface IProps {
   service: ServiceModel;
@@ -36,6 +37,8 @@ class ServiceWebview extends Component<IProps> {
   private lastResponsiveZoomFactor: number | undefined;
 
   private lastResponsiveScale = 1;
+
+  private automaticZoomFactors: number[] = [];
 
   constructor(props: IProps) {
     super(props);
@@ -84,7 +87,7 @@ class ServiceWebview extends Component<IProps> {
   }
 
   private observeResponsiveWidth = (): void => {
-    const webview = this.webview;
+    const { webview } = this;
     if (!webview?.isReady()) return;
 
     const container = (webview.view as any).closest(
@@ -106,34 +109,35 @@ class ServiceWebview extends Component<IProps> {
   };
 
   private updateResponsiveZoom = (): void => {
-    const webview = this.webview;
+    const { webview } = this;
     const container = this.observedContainer as HTMLElement | undefined;
     if (!webview?.isReady() || !container) return;
 
     const currentZoomFactor = (webview.view as any).getZoomFactor?.() ?? 1;
-    if (
-      this.lastResponsiveZoomFactor !== undefined &&
-      Math.abs(currentZoomFactor - this.lastResponsiveZoomFactor) > 0.01
-    ) {
-      // Preserve manual zoom changes when the responsive scale is recalculated.
-      this.baseZoomFactor = currentZoomFactor / this.lastResponsiveScale;
-    } else if (this.baseZoomFactor === undefined) {
+    if (this.baseZoomFactor === undefined) {
       this.baseZoomFactor = currentZoomFactor;
+    } else if (this.lastResponsiveZoomFactor !== undefined) {
+      this.baseZoomFactor = resolveBaseZoomFactor(
+        currentZoomFactor,
+        this.baseZoomFactor,
+        this.lastResponsiveScale,
+        this.automaticZoomFactors,
+      );
     }
 
     const translatorPanelOpen = Boolean(
       document.querySelector('.translator-panel.is-open'),
     );
-    const width = container.getBoundingClientRect().width;
-    const responsiveScale = translatorPanelOpen
-      ? Math.max(
-          RESPONSIVE_ZOOM_MIN_FACTOR,
-          Math.min(1, width / RESPONSIVE_ZOOM_REFERENCE_WIDTH),
-        )
-      : 1;
-    const targetZoomFactor = this.baseZoomFactor * responsiveScale;
+    const { width } = container.getBoundingClientRect();
+    const responsiveScale = getResponsiveZoomScale(width, translatorPanelOpen);
+    const baseZoomFactor = this.baseZoomFactor ?? currentZoomFactor;
+    const targetZoomFactor =
+      (translatorPanelOpen ? Math.min(baseZoomFactor, 1) : baseZoomFactor) *
+      responsiveScale;
 
     if (Math.abs(currentZoomFactor - targetZoomFactor) > 0.01) {
+      this.automaticZoomFactors.push(currentZoomFactor, targetZoomFactor);
+      this.automaticZoomFactors = this.automaticZoomFactors.slice(-50);
       webview.setZoomFactor(targetZoomFactor);
     }
 
@@ -170,6 +174,7 @@ class ServiceWebview extends Component<IProps> {
       this.baseZoomFactor = undefined;
       this.lastResponsiveZoomFactor = undefined;
       this.lastResponsiveScale = 1;
+      this.automaticZoomFactors = [];
     }
     this.webview = webview;
   }

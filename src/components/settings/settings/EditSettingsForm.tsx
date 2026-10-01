@@ -5,6 +5,7 @@ import { noop } from 'lodash';
 import { observer } from 'mobx-react';
 import prettyBytes from 'pretty-bytes';
 import { Component, type ReactElement } from 'react';
+import { NavLink } from 'react-router-dom';
 import {
   type WrappedComponentProps,
   defineMessages,
@@ -55,6 +56,18 @@ const debug = require('../../../preload-safe-debug')(
 );
 
 const messages = defineMessages({
+  settingsSubtitle: {
+    id: 'settings.app.subtitle',
+    defaultMessage: 'Adjust FreeTrans to your chat and translation preferences',
+  },
+  aboutFreeTrans: {
+    id: 'settings.navigation.supportFerdium',
+    defaultMessage: 'About FreeTrans',
+  },
+  preferencesApplications: {
+    id: 'settings.app.preferencesApplications',
+    defaultMessage: 'Applications',
+  },
   headlineGeneral: {
     id: 'settings.app.headlineGeneral',
     defaultMessage: 'General',
@@ -536,6 +549,9 @@ class EditSettingsForm extends Component<IProps, IState> {
       <div className="settings__main">
         <div className="settings__header">
           <H1>{intl.formatMessage(globalMessages.settings)}</H1>
+          <span className="settings__header-item__secondary">
+            {intl.formatMessage(messages.settingsSubtitle)}
+          </span>
         </div>
         <div className="settings__body">
           <form
@@ -544,7 +560,7 @@ class EditSettingsForm extends Component<IProps, IState> {
             id="form"
           >
             {/* Titles */}
-            <div className="recipes__navigation">
+            <div className="recipes__navigation settings__preferences">
               <H5
                 id="general"
                 className={
@@ -642,6 +658,17 @@ class EditSettingsForm extends Component<IProps, IState> {
                     <span className="update-available">•</span>
                   )}
               </H5>
+              <span className="settings__preferences-section-label">
+                {intl.formatMessage(messages.preferencesApplications)}
+              </span>
+              <NavLink
+                to="/settings/support"
+                className={({ isActive }) =>
+                  isActive ? 'badge badge--primary' : 'badge'
+                }
+              >
+                {intl.formatMessage(messages.aboutFreeTrans)}
+              </NavLink>
             </div>
 
             {/* General */}
@@ -669,8 +696,6 @@ class EditSettingsForm extends Component<IProps, IState> {
                 {isWindows && (
                   <Toggle {...form.$('closeToSystemTray').bind()} />
                 )}
-
-                <Toggle {...form.$('keepAllWorkspacesLoaded').bind()} />
 
                 {isTodosActivated && <Hr />}
                 <Toggle {...form.$('enableTodos').bind()} />
@@ -943,17 +968,9 @@ class EditSettingsForm extends Component<IProps, IState> {
 
                 <Toggle {...form.$('hideSplitModeButton').bind()} />
 
-                <Toggle {...form.$('hideWorkspacesButton').bind()} />
-
                 <Toggle {...form.$('hideNotificationsButton').bind()} />
 
                 <Toggle {...form.$('hideSettingsButton').bind()} />
-
-                <Toggle {...form.$('hideDownloadButton').bind()} />
-
-                <Toggle {...form.$('alwaysShowWorkspaces').bind()} />
-
-                <Toggle {...form.$('hideAllServicesWorkspace').bind()} />
               </div>
             )}
 

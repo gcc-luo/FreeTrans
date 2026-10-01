@@ -8,7 +8,7 @@ import type { Stores } from '../@types/stores.types';
 import type { Actions } from '../actions/lib/actions';
 import type { ApiInterface } from '../api';
 import { TODOS_PARTITION_ID } from '../config';
-import { isDevMode } from '../environment-remote';
+import serverlessLogin from '../helpers/serverless-helpers';
 import CachedRequest from './lib/CachedRequest';
 import Request from './lib/Request';
 import TypedStore from './lib/TypedStore';
@@ -70,6 +70,8 @@ export default class UserStore extends TypedStore {
   @observable isImportLegacyServicesCompleted: boolean = false;
 
   @observable isLoggingOut: boolean = false;
+
+  private serverlessLoginStarted = false;
 
   @observable id: string | null | undefined;
 
@@ -294,37 +296,31 @@ export default class UserStore extends TypedStore {
     this.deleteAccountRequest.execute();
   }
 
-  // This is a mobx autorun which forces the user to login if not authenticated
+  // Create a local session automatically because account sign-in is disabled.
   _requireAuthenticatedUser = (): void => {
     if (this.isTokenExpired) {
       this._logout();
     }
 
+    // Wait until persisted settings have loaded before starting the local
+    // accountless session. This ensures the local server listener is ready.
+    if (!this.stores.settings.loaded) {
+      return;
+    }
+
     const { router } = this.stores;
     const currentRoute = window.location.hash;
-    if (!this.isLoggedIn && currentRoute.includes('token=')) {
-      router.push(this.WELCOME_ROUTE);
-      const token = currentRoute.split('=')[1];
 
-      const data = this._parseToken(token);
-      if (data) {
-        // Give this some time to sink
-        setTimeout(() => {
-          this._tokenLogin(token);
-        }, 1000);
+    if (!this.isLoggedIn) {
+      if (!this.serverlessLoginStarted) {
+        this.serverlessLoginStarted = true;
+        serverlessLogin(this.actions);
       }
-    } else if (!this.isLoggedIn && !currentRoute.includes(this.BASE_ROUTE)) {
-      router.push(this.WELCOME_ROUTE);
-    } else if (this.isLoggedIn && currentRoute === this.LOGOUT_ROUTE) {
-      this.actions.user.logout();
-      router.push(this.LOGIN_ROUTE);
-    } else if (
-      this.isLoggedIn &&
-      currentRoute.includes(this.BASE_ROUTE) &&
-      (this.hasCompletedSignup || this.hasCompletedSignup === null) &&
-      !isDevMode
-    ) {
-      this.stores.router.push('/');
+      return;
+    }
+
+    if (currentRoute.includes(this.BASE_ROUTE)) {
+      router.push('/');
     }
   };
 

@@ -21,8 +21,6 @@ import ErrorBoundary from '../util/ErrorBoundary';
 
 import { isMac, isWindows } from '../../environment';
 import Todos from '../../features/todos/containers/TodosScreen';
-import { workspaceStore } from '../../features/workspaces';
-import WorkspaceSwitchingIndicator from '../../features/workspaces/components/WorkspaceSwitchingIndicator';
 import Icon from '../ui/icon';
 
 import LockedScreen from '../../containers/auth/LockedScreen';
@@ -75,7 +73,6 @@ interface IProps extends WrappedComponentProps, WithStylesProps<typeof styles> {
   settings: SettingsStore;
   isFullScreen: boolean;
   sidebar: React.ReactElement;
-  workspacesDrawer: React.ReactElement;
   services: React.ReactElement;
   showServicesUpdatedInfoBar: boolean;
   authRequestFailed: boolean;
@@ -103,7 +100,6 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
     const {
       classes,
       isFullScreen,
-      workspacesDrawer,
       sidebar,
       services,
       showServicesUpdatedInfoBar,
@@ -116,12 +112,6 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
     } = this.props;
 
     const { intl } = this.props;
-    const drawerWidth =
-      (this.props as any).theme?.workspaces?.drawer?.width ?? 300;
-    const contentTransform = workspaceStore.isWorkspaceDrawerOpen
-      ? 'translateX(0)'
-      : `translateX(-${drawerWidth}px)`;
-
     const { locked, automaticUpdates } = settings.app;
     if (locked) {
       return <LockedScreen />;
@@ -144,14 +134,9 @@ class AppLayout extends Component<PropsWithChildren<IProps>, IState> {
                 className={classes.titleBar}
               />
             )}
-            <div
-              className={`app__content ${classes.appContent}`}
-              style={{ transform: contentTransform }}
-            >
-              {workspacesDrawer}
+            <div className={`app__content ${classes.appContent}`}>
               {sidebar}
               <div className="app__service">
-                <WorkspaceSwitchingIndicator />
                 {!areRequiredRequestsSuccessful &&
                   showRequiredRequestsError && (
                     <InfoBar

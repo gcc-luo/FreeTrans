@@ -331,7 +331,7 @@ const generateShowDragAreaStyle = accentColor => {
   `;
 };
 
-const generateVerticalStyle = (widthStr, alwaysShowWorkspaces) => {
+const generateVerticalStyle = widthStr => {
   if (!document.querySelector('#vertical-style')) {
     const link = document.createElement('link');
     link.id = 'vertical-style';
@@ -346,16 +346,6 @@ const generateVerticalStyle = (widthStr, alwaysShowWorkspaces) => {
   const verticalStyleOffset = 29;
 
   return `
-  .sidebar {
-  ${
-    alwaysShowWorkspaces
-      ? `
-    width: calc(100% - 300px) !important;
-  `
-      : ''
-  }
-  }
-
   .sidebar .sidebar__button {
     width: ${width}px;
   }
@@ -366,18 +356,6 @@ const generateVerticalStyle = (widthStr, alwaysShowWorkspaces) => {
 
   .todos__todos-panel--expanded {
     width: calc(100% - 300px) !important;
-  }
-  `;
-};
-
-const generateOpenWorkspaceStyle = () => {
-  return `
-  .app .app__content {
-    width: 100%;
-    transform: translateX(0px);
-  }
-  .sidebar__button--workspaces {
-    display: none;
   }
   `;
 };
@@ -394,7 +372,6 @@ const generateStyle = (settings, app) => {
     iconSize,
     showDragArea,
     useHorizontalStyle,
-    alwaysShowWorkspaces,
     showServiceName,
   } = settings;
 
@@ -424,17 +401,13 @@ const generateStyle = (settings, app) => {
     style += generateShowDragAreaStyle(accentColor);
   }
   if (useHorizontalStyle) {
-    style += generateVerticalStyle(serviceRibbonWidth, alwaysShowWorkspaces);
+    style += generateVerticalStyle(serviceRibbonWidth);
   } else if (document.querySelector('#vertical-style')) {
     const link = document.querySelector('#vertical-style');
     if (link) {
       link.remove();
     }
   }
-  if (alwaysShowWorkspaces) {
-    style += generateOpenWorkspaceStyle();
-  }
-
   style += generateUserCustomCSS();
 
   return style;
@@ -473,7 +446,6 @@ export default function initAppearance(stores) {
       settings.all.app.useGrayscaleServices,
       settings.all.app.grayscaleServicesDim,
       settings.all.app.useHorizontalStyle,
-      settings.all.app.alwaysShowWorkspaces,
       settings.all.app.showServiceName,
       app.isFullScreen,
     ],

@@ -23,10 +23,6 @@ const messages = defineMessages({
     id: 'settings.navigation.yourServices',
     defaultMessage: 'Your services',
   },
-  yourWorkspaces: {
-    id: 'settings.navigation.yourWorkspaces',
-    defaultMessage: 'Your workspaces',
-  },
   account: {
     id: 'settings.navigation.account',
     defaultMessage: 'Account',
@@ -55,7 +51,6 @@ const messages = defineMessages({
 
 interface IProps extends Partial<StoresProps>, WrappedComponentProps {
   serviceCount: number;
-  workspaceCount: number;
 }
 
 @inject('stores', 'actions')
@@ -87,7 +82,7 @@ class SettingsNavigation extends Component<IProps> {
   }
 
   render() {
-    const { serviceCount, workspaceCount, stores, intl } = this.props;
+    const { serviceCount, stores, intl } = this.props;
     const isUsingWithoutAccount = stores!.settings.app.server === LOCAL_SERVER;
     const isUsingFranzServer = stores!.settings.app.server === LIVE_FRANZ_API;
 
@@ -113,17 +108,6 @@ class SettingsNavigation extends Component<IProps> {
         >
           {intl.formatMessage(messages.yourServices)}{' '}
           <span className="badge">{serviceCount}</span>
-        </NavLink>
-        <NavLink
-          to="/settings/workspaces"
-          className={({ isActive }) =>
-            isActive
-              ? 'settings-navigation__link is-active'
-              : 'settings-navigation__link'
-          }
-        >
-          {intl.formatMessage(messages.yourWorkspaces)}{' '}
-          <span className="badge">{workspaceCount}</span>
         </NavLink>
         {!isUsingWithoutAccount && (
           <NavLink
@@ -188,17 +172,17 @@ class SettingsNavigation extends Component<IProps> {
           {intl.formatMessage(messages.supportFerdium)}
         </NavLink>
         <span className="settings-navigation__expander" />
-        <button
-          type="button"
-          // @ts-expect-error  Fix me
-          to="/auth/logout" // TODO: [TS DEBT] Need to check if button take this prop
-          className="settings-navigation__link"
-          onClick={this.handleLogout.bind(this)}
-        >
-          {isUsingWithoutAccount
-            ? intl.formatMessage(messages.exitSession)
-            : intl.formatMessage(messages.logout)}
-        </button>
+        {!isUsingWithoutAccount && (
+          <button
+            type="button"
+            // @ts-expect-error  Fix me
+            to="/auth/logout" // TODO: [TS DEBT] Need to check if button take this prop
+            className="settings-navigation__link"
+            onClick={this.handleLogout.bind(this)}
+          >
+            {intl.formatMessage(messages.logout)}
+          </button>
+        )}
       </div>
     );
   }

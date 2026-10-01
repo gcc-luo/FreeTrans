@@ -252,10 +252,6 @@ const messages = defineMessages({
     id: 'settings.app.form.grayscaleServicesDim',
     defaultMessage: 'Grayscale dim level',
   },
-  hideWorkspacesButton: {
-    id: 'settings.app.form.hideWorkspacesButton',
-    defaultMessage: 'Hide Workspace Drawer button',
-  },
   hideNotificationsButton: {
     id: 'settings.app.form.hideNotificationsButton',
     defaultMessage: 'Hide Notifications & Sound button',
@@ -263,18 +259,6 @@ const messages = defineMessages({
   hideSettingsButton: {
     id: 'settings.app.form.hideSettingsButton',
     defaultMessage: 'Hide Settings button',
-  },
-  hideDownloadButton: {
-    id: 'settings.app.form.hideDownloadButton',
-    defaultMessage: 'Hide Downloads button',
-  },
-  alwaysShowWorkspaces: {
-    id: 'settings.app.form.alwaysShowWorkspaces',
-    defaultMessage: 'Always show workspace drawer',
-  },
-  hideAllServicesWorkspace: {
-    id: 'settings.app.form.hideAllServicesWorkspace',
-    defaultMessage: 'Hide "All services" workspace',
   },
   accentColor: {
     id: 'settings.app.form.accentColor',
@@ -332,10 +316,6 @@ const messages = defineMessages({
     id: 'settings.app.form.enableTodos',
     defaultMessage: 'Enable FreeTrans Todos',
   },
-  keepAllWorkspacesLoaded: {
-    id: 'settings.app.form.keepAllWorkspacesLoaded',
-    defaultMessage: 'Keep all workspaces loaded',
-  },
   downloadFolderPath: {
     id: 'settings.app.form.downloadFolderPath',
     defaultMessage:
@@ -390,14 +370,8 @@ class EditSettingsScreen extends Component<
 
   onSubmit(settingsData) {
     const { intl } = this.props;
-    const { todos, workspaces } = this.props.stores;
-    const {
-      app,
-      settings,
-      user,
-      todos: todosActions,
-      workspaces: workspaceActions,
-    } = this.props.actions;
+    const { todos } = this.props.stores;
+    const { app, settings, user, todos: todosActions } = this.props.actions;
 
     const useOriginalPassword = settingsData.lockedPassword === '';
 
@@ -474,12 +448,8 @@ class EditSettingsScreen extends Component<
       hideSplitModeButton: Boolean(settingsData.hideSplitModeButton),
       useGrayscaleServices: Boolean(settingsData.useGrayscaleServices),
       grayscaleServicesDim: Number(settingsData.grayscaleServicesDim),
-      hideWorkspacesButton: Boolean(settingsData.hideWorkspacesButton),
       hideNotificationsButton: Boolean(settingsData.hideNotificationsButton),
       hideSettingsButton: Boolean(settingsData.hideSettingsButton),
-      hideDownloadButton: Boolean(settingsData.hideDownloadButton),
-      alwaysShowWorkspaces: Boolean(settingsData.alwaysShowWorkspaces),
-      hideAllServicesWorkspace: Boolean(settingsData.hideAllServicesWorkspace),
       accentColor: settingsData.accentColor,
       progressbarAccentColor: settingsData.progressbarAccentColor,
       showMessageBadgeWhenMuted: Boolean(
@@ -559,14 +529,6 @@ class EditSettingsScreen extends Component<
       },
     });
 
-    const { keepAllWorkspacesLoaded } = workspaces.settings;
-    if (
-      Boolean(keepAllWorkspacesLoaded) !==
-      Boolean(settingsData.keepAllWorkspacesLoaded)
-    ) {
-      workspaceActions.toggleKeepAllWorkspacesLoadedSetting();
-    }
-
     if (todos.isFeatureActive) {
       const { isFeatureEnabledByUser } = todos.settings;
       if (
@@ -582,7 +544,7 @@ class EditSettingsScreen extends Component<
   }
 
   prepareForm() {
-    const { app, settings, user, todos, workspaces } = this.props.stores;
+    const { app, settings, user, todos } = this.props.stores;
     const { intl } = this.props;
     const { lockedPassword } = this.state;
 
@@ -1208,15 +1170,6 @@ class EditSettingsScreen extends Component<
           ),
           default: DEFAULT_APP_SETTINGS.grayscaleServicesDim,
         },
-        hideWorkspacesButton: {
-          label: intl.formatMessage(messages.hideWorkspacesButton),
-          value: ifUndefined<boolean>(
-            settings.all.app.hideWorkspacesButton,
-            DEFAULT_APP_SETTINGS.hideWorkspacesButton,
-          ),
-          default: DEFAULT_APP_SETTINGS.hideWorkspacesButton,
-          type: 'checkbox',
-        },
         hideNotificationsButton: {
           label: intl.formatMessage(messages.hideNotificationsButton),
           value: ifUndefined<boolean>(
@@ -1233,33 +1186,6 @@ class EditSettingsScreen extends Component<
             DEFAULT_APP_SETTINGS.hideSettingsButton,
           ),
           default: DEFAULT_APP_SETTINGS.hideSettingsButton,
-          type: 'checkbox',
-        },
-        hideDownloadButton: {
-          label: intl.formatMessage(messages.hideDownloadButton),
-          value: ifUndefined<boolean>(
-            settings.all.app.hideDownloadButton,
-            DEFAULT_APP_SETTINGS.hideDownloadButton,
-          ),
-          default: DEFAULT_APP_SETTINGS.hideDownloadButton,
-          type: 'checkbox',
-        },
-        alwaysShowWorkspaces: {
-          label: intl.formatMessage(messages.alwaysShowWorkspaces),
-          value: ifUndefined<boolean>(
-            settings.all.app.alwaysShowWorkspaces,
-            DEFAULT_APP_SETTINGS.alwaysShowWorkspaces,
-          ),
-          default: DEFAULT_APP_SETTINGS.alwaysShowWorkspaces,
-          type: 'checkbox',
-        },
-        hideAllServicesWorkspace: {
-          label: intl.formatMessage(messages.hideAllServicesWorkspace),
-          value: ifUndefined<boolean>(
-            settings.all.app.hideAllServicesWorkspace,
-            DEFAULT_APP_SETTINGS.hideAllServicesWorkspace,
-          ),
-          default: DEFAULT_APP_SETTINGS.hideAllServicesWorkspace,
           type: 'checkbox',
         },
         accentColor: {
@@ -1365,18 +1291,6 @@ class EditSettingsScreen extends Component<
         sort: false,
       });
       config.fields.translatorLanguage.options = translatorGoogleLanguages;
-    }
-
-    if (workspaces.isFeatureActive) {
-      config.fields.keepAllWorkspacesLoaded = {
-        label: intl.formatMessage(messages.keepAllWorkspacesLoaded),
-        value: ifUndefined<boolean>(
-          workspaces.settings.keepAllWorkspacesLoaded,
-          DEFAULT_APP_SETTINGS.keepAllWorkspacesLoaded,
-        ),
-        default: DEFAULT_APP_SETTINGS.keepAllWorkspacesLoaded,
-        type: 'checkbox',
-      };
     }
 
     if (todos.isFeatureActive) {

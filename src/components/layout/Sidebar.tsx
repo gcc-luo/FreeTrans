@@ -1,18 +1,4 @@
-import {
-  mdiBell,
-  mdiBellOff,
-  mdiCheckAll,
-  mdiChevronDown,
-  mdiChevronRight,
-  mdiCog,
-  mdiDownload,
-  mdiLock,
-  mdiMenu,
-  mdiPlusBox,
-  mdiTranslate,
-  mdiViewGrid,
-  mdiViewSplitVertical,
-} from '@mdi/js';
+import { mdiCog, mdiPlusBox, mdiTranslate } from '@mdi/js';
 import { inject, observer } from 'mobx-react';
 import { Component } from 'react';
 import {
@@ -20,21 +6,7 @@ import {
   defineMessages,
   injectIntl,
 } from 'react-intl';
-import { Tooltip as ReactTooltip } from 'react-tooltip';
-import type { Actions } from '../../actions/lib/actions';
-import {
-  addNewServiceShortcutKey,
-  downloadsShortcutKey,
-  lockFerdiumShortcutKey,
-  muteFerdiumShortcutKey,
-  settingsShortcutKey,
-  splitModeToggleShortcutKey,
-  todosToggleShortcutKey,
-  workspaceToggleShortcutKey,
-} from '../../environment';
 import { translatorActions } from '../../features/messageTranslator/actions';
-import { todosStore } from '../../features/todos';
-import { todoActions } from '../../features/todos/actions';
 import globalMessages from '../../i18n/globalMessages';
 import type Service from '../../models/Service';
 import type { RealStores } from '../../stores';
@@ -46,65 +18,23 @@ const messages = defineMessages({
     id: 'sidebar.addNewService',
     defaultMessage: 'Add new service',
   },
-  splitModeToggle: {
-    id: 'sidebar.splitModeToggle',
-    defaultMessage: 'Split Mode Toggle',
+  servicesSection: {
+    id: 'sidebar.servicesSection',
+    defaultMessage: 'Messaging services',
   },
-  mute: {
-    id: 'sidebar.muteApp',
-    defaultMessage: 'Disable notifications & audio',
-  },
-  unmute: {
-    id: 'sidebar.unmuteApp',
-    defaultMessage: 'Enable notifications & audio',
-  },
-  openWorkspaceDrawer: {
-    id: 'sidebar.openWorkspaceDrawer',
-    defaultMessage: 'Open workspace drawer',
-  },
-  closeWorkspaceDrawer: {
-    id: 'sidebar.closeWorkspaceDrawer',
-    defaultMessage: 'Close workspace drawer',
-  },
-  openTodosDrawer: {
-    id: 'sidebar.openTodosDrawer',
-    defaultMessage: 'Open FreeTrans Todos',
-  },
-  closeTodosDrawer: {
-    id: 'sidebar.closeTodosDrawer',
-    defaultMessage: 'Close FreeTrans Todos',
-  },
-  toggleTranslatorPanel: {
-    id: 'sidebar.toggleTranslatorPanel',
-    defaultMessage: 'Toggle translator panel',
-  },
-  lockFerdium: {
-    id: 'sidebar.lockFerdium',
-    defaultMessage: 'Lock FreeTrans',
+  translationPanel: {
+    id: 'sidebar.translationPanel',
+    defaultMessage: 'Translation panel',
   },
 });
 
 interface IProps extends WrappedComponentProps {
   services: Service[];
-  showServicesUpdatedInfoBar: boolean;
   showMessageBadgeWhenMutedSetting: boolean;
   showServiceNameSetting: boolean;
   showMessageBadgesEvenWhenMuted: boolean;
-  isAppMuted: boolean;
-  // eslint-disable-next-line react/no-unused-prop-types
-  isMenuCollapsed: boolean;
-  isWorkspaceDrawerOpen: boolean;
-  isTodosServiceActive: boolean;
-  actions?: Actions;
   stores?: RealStores;
-
-  toggleMuteApp: () => void;
-  toggleCollapseMenu: () => void;
-  toggleWorkspaceDrawer: () => void;
   openSettings: (args: { path: string }) => void;
-  openDownloads: (args: { path: string }) => void;
-  // eslint-disable-next-line react/no-unused-prop-types
-  closeSettings: () => void;
   setActive: (args: { serviceId: string }) => void;
   reorder: (args: { oldIndex: number; newIndex: number }) => void;
   reload: (args: { serviceId: string }) => void;
@@ -122,305 +52,91 @@ interface IProps extends WrappedComponentProps {
   }) => void;
 }
 
-interface IState {
-  tooltipEnabled: boolean;
-}
-
-@inject('stores', 'actions')
+@inject('stores')
 @observer
-class Sidebar extends Component<IProps, IState> {
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      tooltipEnabled: true,
-    };
-  }
-
-  enableToolTip() {
-    this.setState({ tooltipEnabled: true });
-  }
-
-  disableToolTip() {
-    this.setState({ tooltipEnabled: false });
-  }
-
-  updateToolTip() {
-    this.disableToolTip();
-    setTimeout(this.enableToolTip.bind(this));
-  }
-
+class Sidebar extends Component<IProps> {
   render() {
-    const {
-      openSettings,
-      openDownloads,
-      toggleMuteApp,
-      toggleCollapseMenu,
-      isAppMuted,
-      isWorkspaceDrawerOpen,
-      toggleWorkspaceDrawer,
-      stores,
-      actions,
-      isTodosServiceActive,
-    } = this.props;
-    const {
-      hideCollapseButton,
-      hideRecipesButton,
-      hideWorkspacesButton,
-      hideNotificationsButton,
-      hideSettingsButton,
-      hideDownloadButton,
-      hideSplitModeButton,
-      useHorizontalStyle,
-      splitMode,
-    } = stores!.settings.app;
-    const { intl } = this.props;
-    const todosToggleMessage = todosStore.isTodosPanelVisible
-      ? messages.closeTodosDrawer
-      : messages.openTodosDrawer;
-
-    const workspaceToggleMessage = isWorkspaceDrawerOpen
-      ? messages.closeWorkspaceDrawer
-      : messages.openWorkspaceDrawer;
-
-    const numberActiveButtons = [
-      !hideRecipesButton,
-      !hideWorkspacesButton,
-      !hideNotificationsButton,
-      !hideSettingsButton,
-      !hideSplitModeButton,
-      todosStore.isFeatureEnabledByUser,
-    ].filter(Boolean).length;
-
-    const { isMenuCollapsed } = stores!.settings.all.app;
-
-    const { isDownloading, justFinishedDownloading } = stores!.app;
-    const activeService = this.props.services.find(service => service.isActive);
+    const { openSettings, services, stores, intl } = this.props;
+    const activeService = services.find(service => service.isActive);
 
     return (
-      <div className="sidebar">
-        <Tabbar
-          useHorizontalStyle={stores!.settings.all.app.useHorizontalStyle}
-          showMessageBadgeWhenMutedSetting={
-            this.props.showMessageBadgeWhenMutedSetting
-          }
-          showServiceNameSetting={this.props.showServiceNameSetting}
-          showMessageBadgesEvenWhenMuted={
-            this.props.showMessageBadgesEvenWhenMuted
-          }
-          services={this.props.services}
-          setActive={this.props.setActive}
-          openSettings={this.props.openSettings}
-          enableToolTip={() => this.enableToolTip()}
-          disableToolTip={() => this.disableToolTip()}
-          reorder={this.props.reorder}
-          reload={this.props.reload}
-          toggleNotifications={this.props.toggleNotifications}
-          toggleAudio={this.props.toggleAudio}
-          toggleDarkMode={this.props.toggleDarkMode}
-          deleteService={this.props.deleteService}
-          updateService={this.props.updateService}
-          clearCache={this.props.clearCache}
-          hibernateService={this.props.hibernateService}
-          wakeUpService={this.props.wakeUpService}
-        />
-        {numberActiveButtons <= 1 || hideCollapseButton ? null : (
-          <button
-            type="button"
-            onClick={() => toggleCollapseMenu()}
-            className="sidebar__button sidebar__button--hamburger-menu"
-          >
-            {isMenuCollapsed ? <Icon icon={mdiMenu} size={1.5} /> : null}
+      <aside className="sidebar sidebar--freetrans">
+        <div className="sidebar__top">
+          <div className="sidebar__brand">
+            <span className="sidebar__brand-mark">F</span>
+            <span className="sidebar__brand-name">FreeTrans</span>
+          </div>
 
-            {!isMenuCollapsed && !useHorizontalStyle ? (
-              <Icon icon={mdiChevronDown} size={1.5} />
-            ) : null}
+          <div className="sidebar__section-heading">
+            <span className="sidebar__section-label">
+              {intl.formatMessage(messages.servicesSection)}
+            </span>
+            <span className="sidebar__count">{services.length}</span>
+            <button
+              type="button"
+              className="sidebar__add-service"
+              onClick={() => openSettings({ path: 'recipes' })}
+              aria-label={intl.formatMessage(messages.addNewService)}
+              title={intl.formatMessage(messages.addNewService)}
+            >
+              <Icon icon={mdiPlusBox} size={1.2} />
+            </button>
+          </div>
+          <div className="sidebar__service-list">
+            <Tabbar
+              useHorizontalStyle={false}
+              showMessageBadgeWhenMutedSetting={
+                this.props.showMessageBadgeWhenMutedSetting
+              }
+              showServiceNameSetting={this.props.showServiceNameSetting}
+              showMessageBadgesEvenWhenMuted={
+                this.props.showMessageBadgesEvenWhenMuted
+              }
+              services={services}
+              setActive={this.props.setActive}
+              openSettings={openSettings}
+              enableToolTip={() => null}
+              disableToolTip={() => null}
+              reorder={this.props.reorder}
+              reload={this.props.reload}
+              toggleNotifications={this.props.toggleNotifications}
+              toggleAudio={this.props.toggleAudio}
+              toggleDarkMode={this.props.toggleDarkMode}
+              deleteService={this.props.deleteService}
+              updateService={this.props.updateService}
+              clearCache={this.props.clearCache}
+              hibernateService={this.props.hibernateService}
+              wakeUpService={this.props.wakeUpService}
+            />
+          </div>
+        </div>
 
-            {!isMenuCollapsed && useHorizontalStyle ? (
-              <Icon icon={mdiChevronRight} size={1.5} />
-            ) : null}
-          </button>
-        )}
-        {!hideRecipesButton && !isMenuCollapsed ? (
+        <div className="sidebar__footer-actions">
           <button
             type="button"
-            onClick={() => openSettings({ path: 'recipes' })}
-            className="sidebar__button sidebar__button--new-service"
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={`${intl.formatMessage(
-              messages.addNewService,
-            )} (${addNewServiceShortcutKey(false)})`}
-          >
-            <Icon icon={mdiPlusBox} size={1.5} />
-          </button>
-        ) : null}
-        {!hideSplitModeButton && !isMenuCollapsed ? (
-          <button
-            type="button"
-            onClick={() => {
-              actions!.settings.update({
-                type: 'app',
-                data: {
-                  splitMode: !splitMode,
-                },
-              });
-            }}
-            className="sidebar__button sidebar__button--split-mode-toggle"
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={`${intl.formatMessage(
-              messages.splitModeToggle,
-            )} (${splitModeToggleShortcutKey(false)})`}
-          >
-            <Icon icon={mdiViewSplitVertical} size={1.5} />
-          </button>
-        ) : null}
-        {!hideWorkspacesButton && !isMenuCollapsed ? (
-          <button
-            type="button"
-            onClick={() => {
-              toggleWorkspaceDrawer();
-              this.updateToolTip();
-            }}
-            className={`sidebar__button sidebar__button--workspaces ${
-              isWorkspaceDrawerOpen ? 'is-active' : ''
+            className={`sidebar__footer-link ${
+              stores?.messageTranslator?.isPanelVisible ? 'is-active' : ''
             }`}
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={`${intl.formatMessage(
-              workspaceToggleMessage,
-            )} (${workspaceToggleShortcutKey(false)})`}
-          >
-            <Icon icon={mdiViewGrid} size={1.5} />
-          </button>
-        ) : null}
-        {!hideNotificationsButton && !isMenuCollapsed ? (
-          <button
-            type="button"
-            onClick={() => {
-              toggleMuteApp();
-              this.updateToolTip();
-            }}
-            className={`sidebar__button sidebar__button--audio ${
-              isAppMuted ? 'is-muted' : ''
-            }`}
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={`${intl.formatMessage(
-              isAppMuted ? messages.unmute : messages.mute,
-            )} (${muteFerdiumShortcutKey(false)})`}
-          >
-            <Icon icon={isAppMuted ? mdiBellOff : mdiBell} size={1.5} />
-          </button>
-        ) : null}
-        {todosStore.isFeatureEnabledByUser && !isMenuCollapsed ? (
-          <button
-            type="button"
-            onClick={() => {
-              todoActions.toggleTodosPanel();
-              this.updateToolTip();
-            }}
-            disabled={isTodosServiceActive}
-            className={`sidebar__button sidebar__button--todos ${
-              todosStore.isTodosPanelVisible ? 'is-active' : ''
-            }`}
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={`${intl.formatMessage(
-              todosToggleMessage,
-            )} (${todosToggleShortcutKey(false)})`}
-          >
-            <Icon icon={mdiCheckAll} size={1.5} />
-          </button>
-        ) : null}
-        {isMenuCollapsed ? null : (
-          <button
-            type="button"
             onClick={() => {
               if (activeService) {
                 translatorActions.togglePanel({ serviceId: activeService.id });
               }
             }}
-            className={`sidebar__button sidebar__button--translator ${
-              stores!.messageTranslator?.isPanelVisible ? 'is-active' : ''
-            }`}
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={
-              stores!.settings.all.app.enableTranslator
-                ? intl.formatMessage(messages.toggleTranslatorPanel)
-                : `${intl.formatMessage(messages.toggleTranslatorPanel)}（翻译功能未开启）`
-            }
             disabled={!activeService}
           >
-            <Icon icon={mdiTranslate} size={1.5} />
+            <Icon icon={mdiTranslate} size={1.35} />
+            <span>{intl.formatMessage(messages.translationPanel)}</span>
           </button>
-        )}
-        {stores!.settings.all.app.isLockingFeatureEnabled ? (
           <button
             type="button"
-            className="sidebar__button"
-            onClick={() => {
-              actions!.settings.update({
-                type: 'app',
-                data: {
-                  locked: true,
-                },
-              });
-            }}
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={`${intl.formatMessage(
-              messages.lockFerdium,
-            )} (${lockFerdiumShortcutKey(false)})`}
-          >
-            <Icon icon={mdiLock} size={1.5} />
-          </button>
-        ) : null}
-        {this.state.tooltipEnabled && (
-          <ReactTooltip
-            id="tooltip-sidebar-button"
-            place="right"
-            variant="dark"
-            style={{ height: 'auto', overflowY: 'unset' }}
-          />
-        )}
-
-        {!hideDownloadButton && !isMenuCollapsed ? (
-          <button
-            type="button"
-            onClick={() => openDownloads({ path: '/downloadmanager' })}
-            className={
-              // biome-ignore lint/style/useTemplate: <explanation>
-              'sidebar__button' +
-              `${isDownloading ? ' sidebar__button--downloading' : ''}` +
-              `${justFinishedDownloading ? ' sidebar__button--done' : ''}`
-            }
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={`${intl.formatMessage(
-              globalMessages.downloads,
-            )} (${downloadsShortcutKey(false)})`}
-          >
-            <Icon icon={mdiDownload} size={1.8} />
-          </button>
-        ) : null}
-
-        {!hideSettingsButton && !isMenuCollapsed ? (
-          <button
-            type="button"
+            className="sidebar__footer-link"
             onClick={() => openSettings({ path: 'app' })}
-            className="sidebar__button sidebar__button--settings"
-            data-tooltip-id="tooltip-sidebar-button"
-            data-tooltip-content={`${intl.formatMessage(
-              globalMessages.settings,
-            )} (${settingsShortcutKey(false)})`}
           >
-            <Icon icon={mdiCog} size={1.5} />
-            {stores!.settings.app.automaticUpdates &&
-              (stores!.app.updateStatus ===
-                stores!.app.updateStatusTypes.AVAILABLE ||
-                stores!.app.updateStatus ===
-                  stores!.app.updateStatusTypes.DOWNLOADED ||
-                this.props.showServicesUpdatedInfoBar) && (
-                <span className="update-available">•</span>
-              )}
+            <Icon icon={mdiCog} size={1.35} />
+            <span>{intl.formatMessage(globalMessages.settings)}</span>
           </button>
-        ) : null}
-      </div>
+        </div>
+      </aside>
     );
   }
 }

@@ -8,9 +8,8 @@ import ms from 'ms';
 import type { Stores } from '../@types/stores.types';
 import type { Actions } from '../actions/lib/actions';
 import type { ApiInterface } from '../api';
-import { DEFAULT_SERVICE_SETTINGS, KEEP_WS_LOADED_USID } from '../config';
+import { DEFAULT_SERVICE_SETTINGS } from '../config';
 import { ferdiumVersion } from '../environment-remote';
-import { workspaceStore } from '../features/workspaces';
 import {
   getDevRecipeDirectory,
   getRecipeDirectory,
@@ -385,53 +384,18 @@ export default class ServicesStore extends TypedStore {
   }
 
   @computed get allDisplayed(): Service[] {
-    const services = this.stores.settings.all.app.showDisabledServices
+    return this.stores.settings.all.app.showDisabledServices
       ? this.all
       : this.enabled;
-    return workspaceStore.filterServicesByActiveWorkspace(services);
   }
 
   // This is just used to avoid unnecessary rerendering of resource-heavy webviews
   @computed get allDisplayedUnordered() {
     const { showDisabledServices } = this.stores.settings.all.app;
-    const { keepAllWorkspacesLoaded } = this.stores.workspaces.settings;
     const services = this.allServicesRequest.execute().result || [];
-    const filteredServices = showDisabledServices
+    return showDisabledServices
       ? services
       : services.filter(service => service.isEnabled);
-
-    let displayedServices;
-    if (keepAllWorkspacesLoaded) {
-      // Keep all enabled services loaded
-      displayedServices = filteredServices;
-    } else {
-      // Keep all services in current workspace loaded
-      displayedServices =
-        workspaceStore.filterServicesByActiveWorkspace(filteredServices);
-
-      // Keep all services active in workspaces that should be kept loaded
-      for (const workspace of this.stores.workspaces.workspaces) {
-        // Check if workspace needs to be kept loaded
-        if (workspace.services.includes(KEEP_WS_LOADED_USID)) {
-          // Get services for workspace
-          const serviceIDs = new Set(
-            workspace.services.filter(i => i !== KEEP_WS_LOADED_USID),
-          );
-          const wsServices = filteredServices.filter(service =>
-            serviceIDs.has(service.id),
-          );
-
-          displayedServices = [...displayedServices, ...wsServices];
-        }
-      }
-
-      // Make sure every service is in the list only once
-      displayedServices = displayedServices.filter(
-        (v, i, a) => a.indexOf(v) === i,
-      );
-    }
-
-    return displayedServices;
   }
 
   @computed get filtered() {

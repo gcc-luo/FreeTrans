@@ -42,12 +42,9 @@ import {
   splitModeToggleShortcutKey,
   todosToggleShortcutKey,
   toggleFullScreenKey,
-  workspaceToggleShortcutKey,
 } from '../environment';
 import { ferdiumVersion } from '../environment-remote';
 import { todoActions } from '../features/todos/actions';
-import workspaceActions from '../features/workspaces/actions';
-import { workspaceStore } from '../features/workspaces/index';
 import { onAuthGoToReleaseNotes } from '../helpers/update-helpers';
 import { openExternalUrl } from '../helpers/url-helpers';
 import globalMessages from '../i18n/globalMessages';
@@ -288,18 +285,6 @@ export const menuItems = defineMessages({
     id: 'menu.services.addNewService',
     defaultMessage: 'Add New Service...',
   },
-  addNewWorkspace: {
-    id: 'menu.workspaces.addNewWorkspace',
-    defaultMessage: 'Add New Workspace...',
-  },
-  openWorkspaceDrawer: {
-    id: 'menu.workspaces.openWorkspaceDrawer',
-    defaultMessage: 'Open workspace drawer',
-  },
-  closeWorkspaceDrawer: {
-    id: 'menu.workspaces.closeWorkspaceDrawer',
-    defaultMessage: 'Close workspace drawer',
-  },
   activateNextService: {
     id: 'menu.services.setNextServiceActive',
     defaultMessage: 'Activate next service',
@@ -319,14 +304,6 @@ export const menuItems = defineMessages({
   unmuteApp: {
     id: 'sidebar.unmuteApp',
     defaultMessage: 'Enable notifications & audio',
-  },
-  workspaces: {
-    id: 'menu.workspaces',
-    defaultMessage: 'Workspaces',
-  },
-  defaultWorkspace: {
-    id: 'menu.workspaces.defaultWorkspace',
-    defaultMessage: 'All services',
   },
   todos: {
     id: 'menu.todos',
@@ -600,12 +577,6 @@ function titleBarTemplateFactory(
       accelerator: `${altKey()}+S`,
       visible: !locked,
       submenu: [],
-    },
-    {
-      label: intl.formatMessage(menuItems.workspaces),
-      accelerator: `${altKey()}+W`,
-      submenu: [],
-      visible: !locked,
     },
     {
       label: intl.formatMessage(menuItems.todos),
@@ -894,9 +865,7 @@ class FranzMenu implements StoresProps {
         tpl[2].submenu = serviceTpl;
       }
 
-      tpl[3].submenu = this.workspacesMenu();
-
-      tpl[4].submenu = this.todosMenu();
+      tpl[3].submenu = this.todosMenu();
     }
 
     tpl.unshift({
@@ -1075,9 +1044,7 @@ class FranzMenu implements StoresProps {
         tpl[3].submenu = serviceTpl;
       }
 
-      tpl[4].submenu = this.workspacesMenu();
-
-      tpl[5].submenu = this.todosMenu();
+      tpl[4].submenu = this.todosMenu();
 
       // eslint-disable-next-line unicorn/prefer-at
       (tpl[tpl.length - 1].submenu as MenuItemConstructorOptions[]).push(
@@ -1200,71 +1167,6 @@ class FranzMenu implements StoresProps {
           click: () => this.actions.service.reloadActive(),
         },
       );
-    }
-
-    return menu;
-  }
-
-  workspacesMenu(): MenuItemConstructorOptions[] {
-    const { workspaces, activeWorkspace, isWorkspaceDrawerOpen } =
-      workspaceStore;
-    const { intl } = window['ferdium'];
-
-    const menu: MenuItemConstructorOptions[] = [];
-    // Add new workspace item:
-    menu.push({
-      label: intl.formatMessage(menuItems.addNewWorkspace),
-      accelerator: `${cmdOrCtrlShortcutKey()}+${shiftKey()}+N`,
-      click: () => {
-        workspaceActions.openWorkspaceSettings();
-      },
-      enabled: this.stores.user.isLoggedIn,
-    });
-
-    // Open workspace drawer:
-    if (!this.stores.settings.app.alwaysShowWorkspaces) {
-      const drawerLabel = isWorkspaceDrawerOpen
-        ? menuItems.closeWorkspaceDrawer
-        : menuItems.openWorkspaceDrawer;
-      menu.push({
-        label: intl.formatMessage(drawerLabel),
-        accelerator: `${workspaceToggleShortcutKey()}`,
-        click: () => {
-          workspaceActions.toggleWorkspaceDrawer();
-        },
-        enabled: this.stores.user.isLoggedIn,
-      });
-    }
-
-    if (!this.stores.settings.app.hideAllServicesWorkspace) {
-      menu.push(
-        {
-          type: 'separator',
-        },
-        {
-          label: intl.formatMessage(menuItems.defaultWorkspace),
-          accelerator: `${cmdOrCtrlShortcutKey()}+${altKey()}+0`,
-          type: 'radio',
-          checked: !activeWorkspace,
-          click: () => {
-            workspaceActions.deactivate();
-          },
-        },
-      );
-    }
-
-    // Workspace items
-    for (const [i, workspace] of workspaces.entries()) {
-      menu.push({
-        label: workspace.name,
-        accelerator:
-          i < 9 ? `${cmdOrCtrlShortcutKey()}+${altKey()}+${i + 1}` : undefined,
-        type: 'radio',
-        checked: activeWorkspace ? workspace.id === activeWorkspace.id : false,
-        click: () => {
-          workspaceActions.activate({ workspace });
-        },
-      });
     }
 
     return menu;
