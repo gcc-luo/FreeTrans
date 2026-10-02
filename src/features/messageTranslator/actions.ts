@@ -13,7 +13,6 @@ interface TranslatorActionsType {
     fromLang: string;
     toLang: string;
   }) => void;
-  togglePanel: (params: { serviceId: string }) => void;
   setServiceLanguage: (params: {
     serviceId: string;
     myLanguage: string;
@@ -40,9 +39,6 @@ export const translatorActions =
         text: PropTypes.string.isRequired,
         fromLang: PropTypes.string.isRequired,
         toLang: PropTypes.string.isRequired,
-      },
-      togglePanel: {
-        serviceId: PropTypes.string.isRequired,
       },
       setServiceLanguage: {
         serviceId: PropTypes.string.isRequired,

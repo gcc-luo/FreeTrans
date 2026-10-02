@@ -2,13 +2,27 @@ import semver from 'semver';
 
 const releaseApiBase =
   'https://api.github.com/repos/gcc-luo/FreeTrans/releases';
+const repositoryApiBase = 'https://api.github.com/repos/gcc-luo/FreeTrans';
 
 export interface GitHubRelease {
   tag_name: string;
   body?: string | null;
+  published_at?: string | null;
   draft?: boolean;
   prerelease?: boolean;
   assets?: { name: string; browser_download_url: string }[];
+}
+
+export interface GitHubCommitSummary {
+  sha: string;
+  message: string;
+}
+
+export interface GitHubReleaseNotes {
+  version: string;
+  date: string | null;
+  previousVersion: string | null;
+  commits: GitHubCommitSummary[];
 }
 
 export async function getLatestGitHubRelease(
@@ -76,7 +90,7 @@ export async function getGitHubReleaseByTag(
   tag: string,
 ): Promise<GitHubRelease> {
   const safeTag = String(tag || '').trim();
-  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(safeTag)) {
+  if (!/^v\d+\.\d+\.\d+(?:-[\d.A-Za-z-]+)?$/.test(safeTag)) {
     throw new Error('A valid FreeTrans release tag is required.');
   }
 
@@ -98,4 +112,118 @@ export async function getGitHubReleaseByTag(
     throw new Error('GitHub returned an unexpected release.');
   }
   return release;
+}
+
+export async function getLatestGitHubReleaseInfo(): Promise<GitHubRelease> {
+  const response = await fetch(`${releaseApiBase}/latest`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'FreeTrans',
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub Releases request failed (${response.status}).`);
+  }
+
+  const release = (await response.json()) as GitHubRelease;
+  if (!/^v\d+\.\d+\.\d+(?:-[\d.A-Za-z-]+)?$/.test(release.tag_name)) {
+    throw new Error('GitHub returned an invalid release tag.');
+  }
+  return release;
+}
+
+export async function getGitHubReleaseNotes(
+  tag?: string,
+): Promise<GitHubReleaseNotes> {
+  const release = tag
+    ? await getGitHubReleaseByTag(tag)
+    : await getLatestGitHubReleaseInfo();
+
+  const releasesResponse = await fetch(`${releaseApiBase}?per_page=100`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'FreeTrans',
+    },
+  });
+  if (!releasesResponse.ok) {
+    throw new Error(
+      `GitHub Releases request failed (${releasesResponse.status}).`,
+    );
+  }
+
+  const releases = (await releasesResponse.json()) as GitHubRelease[];
+  const previousRelease = releases
+    .filter(
+      candidate =>
+        !candidate.draft &&
+        candidate.tag_name !== release.tag_name &&
+        semver.valid(candidate.tag_name) &&
+        semver.lt(candidate.tag_name, release.tag_name),
+    )
+    .sort((left, right) => semver.rcompare(left.tag_name, right.tag_name))[0];
+
+  const commits: GitHubCommitSummary[] = [];
+  if (previousRelease) {
+    const compareUrl = `${repositoryApiBase}/compare/${encodeURIComponent(
+      previousRelease.tag_name,
+    )}...${encodeURIComponent(release.tag_name)}`;
+    const firstPageResponse = await fetch(`${compareUrl}?per_page=100&page=1`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'FreeTrans',
+      },
+    });
+    if (!firstPageResponse.ok) {
+      throw new Error(
+        `GitHub comparison request failed (${firstPageResponse.status}).`,
+      );
+    }
+
+    const firstPage = (await firstPageResponse.json()) as {
+      total_commits?: number;
+      commits?: { sha: string; commit: { message: string } }[];
+    };
+    commits.push(
+      ...(firstPage.commits ?? []).map(commit => ({
+        sha: commit.sha,
+        message: commit.commit.message,
+      })),
+    );
+
+    const pageCount = Math.ceil(
+      (firstPage.total_commits ?? commits.length) / 100,
+    );
+    for (let page = 2; page <= pageCount; page += 1) {
+      // eslint-disable-next-line no-await-in-loop -- Avoid bursting the GitHub API with paginated requests.
+      const response = await fetch(`${compareUrl}?per_page=100&page=${page}`, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'FreeTrans',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(
+          `GitHub comparison request failed (${response.status}).`,
+        );
+      }
+
+      // eslint-disable-next-line no-await-in-loop -- Parse each page before requesting the next one.
+      const result = (await response.json()) as {
+        commits?: { sha: string; commit: { message: string } }[];
+      };
+      commits.push(
+        ...(result.commits ?? []).map(commit => ({
+          sha: commit.sha,
+          message: commit.commit.message,
+        })),
+      );
+    }
+  }
+
+  return {
+    version: release.tag_name,
+    date: release.published_at ?? null,
+    previousVersion: previousRelease?.tag_name ?? null,
+    commits,
+  };
 }

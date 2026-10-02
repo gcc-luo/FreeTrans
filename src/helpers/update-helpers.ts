@@ -16,6 +16,13 @@ export const updateVersionParse = (updateVersion: string): string => {
   return updateVersion === '' ? '' : `?version=${updateVersion}`;
 };
 
+export const getRequestedReleaseTag = (
+  currentLocation: string,
+): string | undefined => {
+  const matches = currentLocation.match(/[&?]version=([^#&]*)/);
+  return matches ? `v${decodeURIComponent(matches[1])}` : undefined;
+};
+
 export const onAuthGoToReleaseNotes = (
   currentLocation: string,
   updateVersionParsed: string = '',
@@ -38,21 +45,34 @@ const messages = defineMessages({
   },
 });
 
+export interface GitHubReleaseInfo {
+  version: string;
+  date: string | null;
+  previousVersion: string | null;
+  commits: { sha: string; message: string }[];
+  error?: string;
+}
+
 export async function getUpdateInfoFromGitHub(
   currentLocation: string,
   appVersion: string,
   intl: IntlShape,
-): Promise<string> {
-  try {
-    const releaseNotes = await ipcRenderer.invoke(
-      'get-github-release-notes',
-      getAppVersionTag(currentLocation, appVersion),
-    );
+): Promise<GitHubReleaseInfo> {
+  const requestedTag = getRequestedReleaseTag(currentLocation);
 
-    return (
-      releaseNotes || `### ${intl.formatMessage(messages.connectionError)}`
-    );
+  try {
+    return await ipcRenderer.invoke('get-github-release-notes', requestedTag);
   } catch {
-    return `### ${intl.formatMessage(messages.connectionErrorPageMissing)}`;
+    return {
+      version: requestedTag ?? `v${appVersion}`,
+      date: null,
+      previousVersion: null,
+      commits: [],
+      error: intl.formatMessage(
+        requestedTag
+          ? messages.connectionErrorPageMissing
+          : messages.connectionError,
+      ),
+    };
   }
 }

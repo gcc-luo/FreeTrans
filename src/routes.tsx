@@ -179,6 +179,15 @@ class FerdiumRoutes extends Component<IProps> {
                 element={<EditSettingsScreen {...this.props} />}
               />
               <Route
+                path="/settings/app/translator-panel"
+                element={<Navigate to="/settings/app/general" replace />}
+              />
+              <Route
+                path="/settings/app/:section"
+                // @ts-expect-error Fix me
+                element={<EditSettingsScreen {...this.props} />}
+              />
+              <Route
                 path="/settings/invite"
                 // @ts-expect-error Fix me
                 element={<InviteSettingsScreen {...this.props} />}

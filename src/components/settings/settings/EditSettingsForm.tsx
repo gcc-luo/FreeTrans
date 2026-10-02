@@ -1,11 +1,10 @@
 import { systemPreferences } from '@electron/remote';
-import { mdiGithub, mdiOpenInNew, mdiPowerPlug } from '@mdi/js';
+import { mdiOpenInNew } from '@mdi/js';
 import { ipcRenderer } from 'electron';
 import { noop } from 'lodash';
 import { observer } from 'mobx-react';
 import prettyBytes from 'pretty-bytes';
 import { Component, type ReactElement } from 'react';
-import { NavLink } from 'react-router-dom';
 import {
   type WrappedComponentProps,
   defineMessages,
@@ -16,8 +15,6 @@ import {
   DEFAULT_ACCENT_COLOR,
   DEFAULT_APP_SETTINGS,
   FERDIUM_TRANSLATION,
-  GITHUB_FERDIUM_URL,
-  GITHUB_FRANZ_URL,
   SPLIT_COLUMNS_MAX,
   SPLIT_COLUMNS_MIN,
 } from '../../../config';
@@ -33,10 +30,6 @@ import {
   userDataPath,
   userDataRecipesPath,
 } from '../../../environment-remote';
-import {
-  onAuthGoToReleaseNotes,
-  updateVersionParse,
-} from '../../../helpers/update-helpers';
 import { openExternalUrl, openPath } from '../../../helpers/url-helpers';
 import globalMessages from '../../../i18n/globalMessages';
 import type Form from '../../../lib/Form';
@@ -45,7 +38,7 @@ import Select from '../../ui/Select';
 import Slider from '../../ui/Slider';
 import Button from '../../ui/button';
 import ColorPickerInput from '../../ui/colorPickerInput';
-import { H1, H2, H3, H5 } from '../../ui/headline';
+import { H1, H2, H3 } from '../../ui/headline';
 import Icon from '../../ui/icon';
 import Input from '../../ui/input/index';
 import Toggle from '../../ui/toggle';
@@ -59,14 +52,6 @@ const messages = defineMessages({
   settingsSubtitle: {
     id: 'settings.app.subtitle',
     defaultMessage: 'Adjust FreeTrans to your chat and translation preferences',
-  },
-  aboutFreeTrans: {
-    id: 'settings.navigation.supportFerdium',
-    defaultMessage: 'About FreeTrans',
-  },
-  preferencesApplications: {
-    id: 'settings.app.preferencesApplications',
-    defaultMessage: 'Applications',
   },
   headlineGeneral: {
     id: 'settings.app.headlineGeneral',
@@ -127,10 +112,6 @@ const messages = defineMessages({
   headlineLanguage: {
     id: 'settings.app.headlineLanguage',
     defaultMessage: 'Language',
-  },
-  headlineUpdates: {
-    id: 'settings.app.headlineUpdates',
-    defaultMessage: 'Updates',
   },
   headlineAppearance: {
     id: 'settings.app.headlineAppearance',
@@ -271,10 +252,6 @@ const messages = defineMessages({
     id: 'settings.app.buttonInstallUpdate',
     defaultMessage: 'Download update',
   },
-  buttonShowChangelog: {
-    id: 'settings.app.buttonShowChangelog',
-    defaultMessage: 'Release notes',
-  },
   updateStatusSearching: {
     id: 'settings.app.updateStatusSearching',
     defaultMessage: 'Searching for updates...',
@@ -291,10 +268,6 @@ const messages = defineMessages({
     id: 'settings.app.updateStatusUpToDate',
     defaultMessage: 'You are using the latest version of FreeTrans',
   },
-  servicesUpdateStatusUpToDate: {
-    id: 'settings.app.servicesUpdateStatusUpToDate',
-    defaultMessage: 'Your services are up-to-date',
-  },
   currentVersion: {
     id: 'settings.app.currentVersion',
     defaultMessage: 'Current version:',
@@ -302,14 +275,6 @@ const messages = defineMessages({
   appRestartRequired: {
     id: 'settings.app.restartRequired',
     defaultMessage: 'Changes require restart',
-  },
-  servicesUpdated: {
-    id: 'infobar.servicesUpdated',
-    defaultMessage: 'Your services have been updated.',
-  },
-  buttonReloadServices: {
-    id: 'infobar.buttonReloadServices',
-    defaultMessage: 'Reload services',
   },
   numberOfColumns: {
     id: 'settings.app.form.splitColumns',
@@ -367,7 +332,6 @@ interface IProps extends WrappedComponentProps {
   updateFailed: boolean;
   isClearingAllCache: boolean;
   isTodosActivated: boolean;
-  automaticUpdates: boolean;
   isTwoFactorAutoCatcherEnabled: boolean;
   twoFactorAutoCatcherMatcher: string;
   isDarkmodeEnabled: boolean;
@@ -376,8 +340,8 @@ interface IProps extends WrappedComponentProps {
   isLockingFeatureEnabled: boolean;
   isSplitModeEnabled: boolean;
   isOnline: boolean;
-  showServicesUpdatedInfoBar: boolean;
   updateVersion: string;
+  activeSettingsSection: string;
   serverURL: string;
   onClearAllCache: () => void;
   getCacheSize: () => void;
@@ -388,7 +352,6 @@ interface IProps extends WrappedComponentProps {
 }
 
 interface IState {
-  activeSetttingsTab: string;
   clearCacheButtonClicked: boolean;
 }
 
@@ -398,15 +361,8 @@ class EditSettingsForm extends Component<IProps, IState> {
     super(props);
 
     this.state = {
-      activeSetttingsTab: 'general',
       clearCacheButtonClicked: false,
     };
-  }
-
-  setActiveSettingsTab(tab) {
-    this.setState({
-      activeSetttingsTab: tab,
-    });
   }
 
   onClearCacheClicked = () => {
@@ -495,11 +451,9 @@ class EditSettingsForm extends Component<IProps, IState> {
       noUpdateAvailable,
       updateIsReadyToInstall,
       updateFailed,
-      showServicesUpdatedInfoBar,
       isClearingAllCache,
       onClearAllCache,
       getCacheSize,
-      automaticUpdates,
       isTwoFactorAutoCatcherEnabled,
       isDarkmodeEnabled,
       isSplitModeEnabled,
@@ -507,12 +461,30 @@ class EditSettingsForm extends Component<IProps, IState> {
       isTodosActivated,
       isOnline,
       serverURL,
+      activeSettingsSection,
       intl,
     } = this.props;
 
-    const updateButtonLabelMessage = isCheckingForUpdates
-      ? messages.updateStatusSearching
-      : messages.buttonSearchForUpdate;
+    const updateStatus = (
+      <div className="settings__updates-status" aria-live="polite">
+        {isUpdateAvailable || updateIsReadyToInstall ? (
+          <p>
+            {intl.formatMessage(messages.updateStatusAvailable)} {updateVersion}
+          </p>
+        ) : null}
+        {noUpdateAvailable && (
+          <p>{intl.formatMessage(messages.updateStatusUpToDate)}.</p>
+        )}
+        {isSnap && isUpdateAvailable && (
+          <p>{intl.formatMessage(messages.updateAvailableSnap)}</p>
+        )}
+        {updateFailed && (
+          <Infobox type="danger" icon="alert">
+            &nbsp;An error occurred (check the console for more details)
+          </Infobox>
+        )}
+      </div>
+    );
 
     const {
       isLockingFeatureEnabled,
@@ -525,7 +497,7 @@ class EditSettingsForm extends Component<IProps, IState> {
     let cacheSize;
     let notCleared;
 
-    if (this.state.activeSetttingsTab === 'advanced') {
+    if (activeSettingsSection === 'advanced') {
       const cacheSizeBytes = getCacheSize();
       debug('cacheSizeBytes:', cacheSizeBytes);
       if (typeof cacheSizeBytes === 'number') {
@@ -559,120 +531,8 @@ class EditSettingsForm extends Component<IProps, IState> {
             onChange={e => this.submit(e)}
             id="form"
           >
-            {/* Titles */}
-            <div className="recipes__navigation settings__preferences">
-              <H5
-                id="general"
-                className={
-                  this.state.activeSetttingsTab === 'general'
-                    ? 'badge badge--primary'
-                    : 'badge'
-                }
-                onClick={() => {
-                  this.setActiveSettingsTab('general');
-                }}
-              >
-                {intl.formatMessage(messages.headlineGeneral)}
-              </H5>
-              <H5
-                id="services"
-                className={
-                  this.state.activeSetttingsTab === 'services'
-                    ? 'badge badge--primary'
-                    : 'badge'
-                }
-                onClick={() => {
-                  this.setActiveSettingsTab('services');
-                }}
-              >
-                {intl.formatMessage(messages.headlineServices)}
-              </H5>
-              <H5
-                id="appearance"
-                className={
-                  this.state.activeSetttingsTab === 'appearance'
-                    ? 'badge badge--primary'
-                    : 'badge'
-                }
-                onClick={() => {
-                  this.setActiveSettingsTab('appearance');
-                }}
-              >
-                {intl.formatMessage(messages.headlineAppearance)}
-              </H5>
-              <H5
-                id="privacy"
-                className={
-                  this.state.activeSetttingsTab === 'privacy'
-                    ? 'badge badge--primary'
-                    : 'badge'
-                }
-                onClick={() => {
-                  this.setActiveSettingsTab('privacy');
-                }}
-              >
-                {intl.formatMessage(messages.headlinePrivacy)}
-              </H5>
-              <H5
-                id="language"
-                className={
-                  this.state.activeSetttingsTab === 'language'
-                    ? 'badge badge--primary'
-                    : 'badge'
-                }
-                onClick={() => {
-                  this.setActiveSettingsTab('language');
-                }}
-              >
-                {intl.formatMessage(messages.headlineLanguage)}
-              </H5>
-              <H5
-                id="advanced"
-                className={
-                  this.state.activeSetttingsTab === 'advanced'
-                    ? 'badge badge--primary'
-                    : 'badge'
-                }
-                onClick={() => {
-                  this.setActiveSettingsTab('advanced');
-                }}
-              >
-                {intl.formatMessage(messages.headlineAdvanced)}
-              </H5>
-              <H5
-                id="updates"
-                className={
-                  this.state.activeSetttingsTab === 'updates'
-                    ? 'badge badge--primary'
-                    : 'badge'
-                }
-                onClick={() => {
-                  this.setActiveSettingsTab('updates');
-                }}
-              >
-                {intl.formatMessage(messages.headlineUpdates)}
-                {automaticUpdates &&
-                  (updateIsReadyToInstall ||
-                    isUpdateAvailable ||
-                    showServicesUpdatedInfoBar) && (
-                    <span className="update-available">•</span>
-                  )}
-              </H5>
-              <span className="settings__preferences-section-label">
-                {intl.formatMessage(messages.preferencesApplications)}
-              </span>
-              <NavLink
-                to="/settings/support"
-                className={({ isActive }) =>
-                  isActive ? 'badge badge--primary' : 'badge'
-                }
-              >
-                {intl.formatMessage(messages.aboutFreeTrans)}
-              </NavLink>
-            </div>
-
             {/* General */}
-            {this.state.activeSetttingsTab === 'general' && (
+            {activeSettingsSection === 'general' && (
               <div>
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionMain)}
@@ -783,7 +643,7 @@ class EditSettingsForm extends Component<IProps, IState> {
             )}
 
             {/* Services */}
-            {this.state.activeSetttingsTab === 'services' && (
+            {activeSettingsSection === 'services' && (
               <div>
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionServiceIconsSettings)}
@@ -869,7 +729,7 @@ class EditSettingsForm extends Component<IProps, IState> {
             )}
 
             {/* Appearance */}
-            {this.state.activeSetttingsTab === 'appearance' && (
+            {activeSettingsSection === 'appearance' && (
               <div>
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionGeneralUi)}
@@ -975,7 +835,7 @@ class EditSettingsForm extends Component<IProps, IState> {
             )}
 
             {/* Privacy */}
-            {this.state.activeSetttingsTab === 'privacy' && (
+            {activeSettingsSection === 'privacy' && (
               <div>
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionPrivacy)}
@@ -1066,7 +926,7 @@ class EditSettingsForm extends Component<IProps, IState> {
             )}
 
             {/* Language */}
-            {this.state.activeSetttingsTab === 'language' && (
+            {activeSettingsSection === 'language' && (
               <div>
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionLanguage)}
@@ -1116,7 +976,7 @@ class EditSettingsForm extends Component<IProps, IState> {
             )}
 
             {/* Advanced */}
-            {this.state.activeSetttingsTab === 'advanced' && (
+            {activeSettingsSection === 'advanced' && (
               <div>
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionAdvanced)}
@@ -1317,34 +1177,58 @@ class EditSettingsForm extends Component<IProps, IState> {
               </div>
             )}
 
-            {/* Updates */}
-            {this.state.activeSetttingsTab === 'updates' && (
-              <div>
+            {activeSettingsSection === 'update-settings' && (
+              <div className="settings__updates-panel">
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionUpdates)}
                 </H2>
 
+                <p className="settings__updates-current">
+                  {intl.formatMessage(messages.currentVersion)} {ferdiumVersion}
+                </p>
+
                 <Toggle {...form.$('automaticUpdates').bind()} />
                 <Toggle {...form.$('beta').bind()} />
+              </div>
+            )}
+
+            {activeSettingsSection === 'check-updates' && (
+              <div className="settings__updates-panel">
+                <H2 className="settings__section_header">
+                  {intl.formatMessage(messages.buttonSearchForUpdate)}
+                </H2>
+
+                <p className="settings__updates-current">
+                  {intl.formatMessage(messages.currentVersion)} {ferdiumVersion}
+                </p>
 
                 <div className="settings__updates-actions">
                   <Button
                     buttonType="secondary"
-                    label={intl.formatMessage(updateButtonLabelMessage)}
+                    label={intl.formatMessage(
+                      isCheckingForUpdates
+                        ? messages.updateStatusSearching
+                        : messages.buttonSearchForUpdate,
+                    )}
                     onClick={checkForUpdates}
                     disabled={isCheckingForUpdates || !isOnline}
                     busy={isCheckingForUpdates}
                   />
-                  <Button
-                    buttonType="secondary"
-                    label={intl.formatMessage(messages.buttonShowChangelog)}
-                    onClick={() => {
-                      window.location.href = onAuthGoToReleaseNotes(
-                        window.location.href,
-                        updateVersionParse(updateVersion),
-                      );
-                    }}
-                  />
+                </div>
+
+                {updateStatus}
+              </div>
+            )}
+
+            {activeSettingsSection === 'download-update' && (
+              <div className="settings__updates-panel">
+                <H2 className="settings__section_header">
+                  {intl.formatMessage(messages.buttonInstallUpdate)}
+                </H2>
+
+                {updateStatus}
+
+                <div className="settings__updates-actions">
                   <Button
                     label={intl.formatMessage(messages.buttonInstallUpdate)}
                     onClick={installUpdate}
@@ -1353,68 +1237,6 @@ class EditSettingsForm extends Component<IProps, IState> {
                     }
                   />
                 </div>
-
-                <div className="settings__updates-status">
-                  <p>
-                    {intl.formatMessage(messages.currentVersion)}{' '}
-                    {ferdiumVersion}
-                  </p>
-                  {isUpdateAvailable || updateIsReadyToInstall ? (
-                    <p>
-                      {intl.formatMessage(messages.updateStatusAvailable)}{' '}
-                      {updateVersion}
-                    </p>
-                  ) : null}
-                  {noUpdateAvailable && (
-                    <p>{intl.formatMessage(messages.updateStatusUpToDate)}.</p>
-                  )}
-                  {isSnap && isUpdateAvailable && (
-                    <p>{intl.formatMessage(messages.updateAvailableSnap)}</p>
-                  )}
-                  {updateFailed && (
-                    <Infobox type="danger" icon="alert">
-                      &nbsp;An error occurred (check the console for more
-                      details)
-                    </Infobox>
-                  )}
-                </div>
-
-                {showServicesUpdatedInfoBar ? (
-                  <>
-                    <p>
-                      <Icon icon={mdiPowerPlug} />
-                      {intl.formatMessage(messages.servicesUpdated)}
-                    </p>
-                    <Button
-                      label={intl.formatMessage(messages.buttonReloadServices)}
-                      onClick={() => window.location.reload()}
-                    />
-                  </>
-                ) : (
-                  <p>
-                    <Icon icon={mdiPowerPlug} />
-                    &nbsp;
-                    {intl.formatMessage(messages.servicesUpdateStatusUpToDate)}
-                  </p>
-                )}
-                <p className="settings__message">
-                  <Icon icon={mdiGithub} /> FreeTrans is based on Ferdium{' '}
-                  <a
-                    href={`${GITHUB_FRANZ_URL}/franz`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Franz
-                  </a>
-                  , a project published under the{' '}
-                  <a
-                    href={`${GITHUB_FERDIUM_URL}/ferdium-app/blob/master/LICENSE.md`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Apache-2.0 License
-                  </a>
-                </p>
               </div>
             )}
           </form>

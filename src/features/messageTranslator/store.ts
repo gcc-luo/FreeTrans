@@ -53,8 +53,6 @@ export default class MessageTranslatorStore extends FeatureStore {
     return localStorage.getItem('messageTranslator') || {};
   }
 
-  readonly isPanelVisible = true;
-
   @computed get panelWidth() {
     const width = ifUndefined<number>(
       this.settings.panelWidth,
@@ -93,7 +91,6 @@ export default class MessageTranslatorStore extends FeatureStore {
       createActionBindings([
         [translatorActions.updateSettings, this._updateServiceSettings],
         [translatorActions.translateMessage, this._translateMessage],
-        [translatorActions.togglePanel, this._togglePanel],
         [translatorActions.setServiceLanguage, this._setServiceLanguage],
         [translatorActions.handleHostMessage, this._handleHostMessage],
         [translatorActions.handleClientMessage, this._handleClientMessage],
@@ -106,10 +103,7 @@ export default class MessageTranslatorStore extends FeatureStore {
     ]);
     this._registerReactions(this._allReactions);
 
-    this._mergeGlobalSettings({
-      isPanelVisible: true,
-      panelWidth: 300,
-    });
+    this._mergeGlobalSettings({ panelWidth: 300 });
 
     this.isFeatureActive = true;
   }
@@ -4886,12 +4880,6 @@ export default class MessageTranslatorStore extends FeatureStore {
     toLang: string;
   }) => {
     debug('_translateMessage requested', { text, fromLang, toLang });
-  };
-
-  @action _togglePanel = () => {
-    this._mergeGlobalSettings({
-      isPanelVisible: true,
-    });
   };
 
   @action _setServiceLanguage = ({

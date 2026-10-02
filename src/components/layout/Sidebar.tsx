@@ -1,15 +1,13 @@
-import { mdiCog, mdiPlusBox, mdiTranslate } from '@mdi/js';
-import { inject, observer } from 'mobx-react';
+import { mdiCog, mdiPlusBox } from '@mdi/js';
+import { observer } from 'mobx-react';
 import { Component } from 'react';
 import {
   type WrappedComponentProps,
   defineMessages,
   injectIntl,
 } from 'react-intl';
-import { translatorActions } from '../../features/messageTranslator/actions';
 import globalMessages from '../../i18n/globalMessages';
 import type Service from '../../models/Service';
-import type { RealStores } from '../../stores';
 import Tabbar from '../services/tabs/Tabbar';
 import Icon from '../ui/icon';
 
@@ -22,10 +20,6 @@ const messages = defineMessages({
     id: 'sidebar.servicesSection',
     defaultMessage: 'Messaging services',
   },
-  translationPanel: {
-    id: 'sidebar.translationPanel',
-    defaultMessage: 'Translation panel',
-  },
 });
 
 interface IProps extends WrappedComponentProps {
@@ -33,7 +27,6 @@ interface IProps extends WrappedComponentProps {
   showMessageBadgeWhenMutedSetting: boolean;
   showServiceNameSetting: boolean;
   showMessageBadgesEvenWhenMuted: boolean;
-  stores?: RealStores;
   openSettings: (args: { path: string }) => void;
   setActive: (args: { serviceId: string }) => void;
   reorder: (args: { oldIndex: number; newIndex: number }) => void;
@@ -52,13 +45,10 @@ interface IProps extends WrappedComponentProps {
   }) => void;
 }
 
-@inject('stores')
 @observer
 class Sidebar extends Component<IProps> {
   render() {
-    const { openSettings, services, stores, intl } = this.props;
-    const activeService = services.find(service => service.isActive);
-
+    const { openSettings, services, intl } = this.props;
     return (
       <aside className="sidebar sidebar--freetrans">
         <div className="sidebar__top">
@@ -112,21 +102,6 @@ class Sidebar extends Component<IProps> {
         </div>
 
         <div className="sidebar__footer-actions">
-          <button
-            type="button"
-            className={`sidebar__footer-link ${
-              stores?.messageTranslator?.isPanelVisible ? 'is-active' : ''
-            }`}
-            onClick={() => {
-              if (activeService) {
-                translatorActions.togglePanel({ serviceId: activeService.id });
-              }
-            }}
-            disabled={!activeService}
-          >
-            <Icon icon={mdiTranslate} size={1.35} />
-            <span>{intl.formatMessage(messages.translationPanel)}</span>
-          </button>
           <button
             type="button"
             className="sidebar__footer-link"

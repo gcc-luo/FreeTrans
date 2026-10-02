@@ -94,7 +94,6 @@ class MessageTranslatorPanel extends Component<Props> {
     const activeService = services.active;
     if (!activeService) return null;
 
-    const isOpen = Boolean(messageTranslator.isPanelVisible);
     const serviceSettings = messageTranslator.getServiceSettings(
       activeService.id,
     );
@@ -116,15 +115,11 @@ class MessageTranslatorPanel extends Component<Props> {
 
     return (
       <aside
-        className={`translator-panel translator-panel--theme-${panelTheme} ${isOpen ? 'is-open' : ''}`}
-        style={
-          isOpen
-            ? {
-                width: `${messageTranslator.panelWidth}px`,
-                flexBasis: `${messageTranslator.panelWidth}px`,
-              }
-            : undefined
-        }
+        className={`translator-panel translator-panel--theme-${panelTheme} is-open`}
+        style={{
+          width: `${messageTranslator.panelWidth}px`,
+          flexBasis: `${messageTranslator.panelWidth}px`,
+        }}
       >
         <div className="translator-panel__header translator-panel__header--compact">
           <div className="translator-panel__title">

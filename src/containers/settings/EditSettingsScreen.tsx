@@ -6,6 +6,7 @@ import {
   defineMessages,
   injectIntl,
 } from 'react-intl';
+import { useParams } from 'react-router-dom';
 
 import type { StoresProps } from '../../@types/ferdium-components.types';
 import type { FormFields } from '../../@types/mobx-form.types';
@@ -348,7 +349,9 @@ const messages = defineMessages({
   },
 });
 
-interface EditSettingsScreenProps extends StoresProps, WrappedComponentProps {}
+interface EditSettingsScreenProps extends StoresProps, WrappedComponentProps {
+  activeSettingsSection: string;
+}
 
 interface EditSettingsScreenState {
   lockedPassword: string;
@@ -1327,20 +1330,17 @@ class EditSettingsScreen extends Component<
           checkForUpdates={checkForUpdates}
           installUpdate={installUpdate}
           updateVersion={updateVersion}
+          activeSettingsSection={this.props.activeSettingsSection}
           isCheckingForUpdates={updateStatus === updateStatusTypes.CHECKING}
           isUpdateAvailable={updateStatus === updateStatusTypes.AVAILABLE}
           noUpdateAvailable={updateStatus === updateStatusTypes.NOT_AVAILABLE}
           updateIsReadyToInstall={updateStatus === updateStatusTypes.DOWNLOADED}
           updateFailed={updateStatus === updateStatusTypes.FAILED}
-          showServicesUpdatedInfoBar={
-            this.props.stores.ui.showServicesUpdatedInfoBar
-          }
           onSubmit={d => this.onSubmit(d)}
           getCacheSize={() => app.cacheSize}
           isClearingAllCache={isClearingAllCache}
           onClearAllCache={clearAllCache}
           isLockingFeatureEnabled={isLockingFeatureEnabled}
-          automaticUpdates={this.props.stores.settings.app.automaticUpdates}
           isDarkmodeEnabled={this.props.stores.settings.app.darkMode}
           isAdaptableDarkModeEnabled={
             this.props.stores.settings.app.adaptableDarkMode
@@ -1365,4 +1365,9 @@ class EditSettingsScreen extends Component<
   }
 }
 
-export default injectIntl(EditSettingsScreen);
+const EditSettingsRoute = (props: StoresProps & WrappedComponentProps) => {
+  const { section = 'general' } = useParams();
+  return <EditSettingsScreen {...props} activeSettingsSection={section} />;
+};
+
+export default injectIntl(EditSettingsRoute);

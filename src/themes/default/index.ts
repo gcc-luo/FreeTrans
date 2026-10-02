@@ -126,7 +126,7 @@ export default (brandPrimary: string) => {
     toggleBackground: legacyStyles.themeGrayLighter,
     toggleButton: legacyStyles.themeGrayLight,
     toggleButtonActive: brandPrimary,
-    toggleWidth: 40,
+    toggleWidth: 34,
     toggleHeight: 14,
 
     // Style Types
