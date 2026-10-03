@@ -160,7 +160,6 @@ export default class ServicesStore extends TypedStore {
         serviceId: result.serviceId,
         requestId: result.requestId,
         success: result.success,
-        translatedTextPreview: String(result.text || '').slice(0, 120),
         translatedTextLength: String(result.text || '').length,
         error: result.error,
       });
@@ -852,7 +851,10 @@ export default class ServicesStore extends TypedStore {
       }
 
       case 'translator:translate-message': {
-        debug('Received translation request from', serviceId, args[0]);
+        debug('Received translation request from', serviceId, {
+          requestId: args[0]?.requestId,
+          textLength: String(args[0]?.text || '').length,
+        });
         // eslint-disable-next-line no-console
         console.log('[ServicesStore] Forward translation request', {
           serviceId,
@@ -862,7 +864,7 @@ export default class ServicesStore extends TypedStore {
           fromLang: args[0]?.fromLang || '',
           toLang: args[0]?.toLang || '',
           translatorEngine: args[0]?.translatorEngine || '',
-          originalTextPreview: String(args[0]?.text || '').slice(0, 120),
+          originalTextLength: String(args[0]?.text || '').length,
         });
         // Forward translation request to main process
         // MVP 版本：固定使用 LibreTranslate（开源免费）
@@ -913,7 +915,10 @@ export default class ServicesStore extends TypedStore {
       }
 
       case 'translator:incoming-language-detected': {
-        debug('Translator incoming language detected for', serviceId, args[0]);
+        debug('Translator incoming language detected for', serviceId, {
+          detectedLanguage: args[0]?.detectedLanguage,
+          sampleLength: args[0]?.sampleLength,
+        });
         if (this.stores?.messageTranslator && args[0]) {
           this.stores.messageTranslator._handleClientMessage({
             channel: 'translator:client',

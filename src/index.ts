@@ -48,7 +48,6 @@ import { ifUndefined } from './jsUtils';
 import Settings from './electron/Settings';
 import handleDeepLink from './electron/deepLinking';
 import './electron/exception';
-// eslint-disable-next-line import/no-cycle
 import ipcApi, { shutdownServer } from './electron/ipc-api';
 import isPositionValid from './electron/windowUtils';
 import { mainIpcHandler as basicAuthHandler } from './features/basicAuth';
@@ -60,6 +59,16 @@ import { appId } from './package.json';
 import { asarPath } from './helpers/asar-helpers';
 import { checkIfCertIsPresent } from './helpers/certs-helpers';
 import { getTranslationCache } from './helpers/translation-cache';
+import {
+  clearSavedBaiduCredentials,
+  getBaiduCredentialStatus,
+  saveBaiduCredentials,
+  clearProviderCredentials,
+  getProviderCredentialStatus,
+  getProviderCredentials,
+  saveProviderCredentials,
+  type ConfigurableTranslationEngine,
+} from './helpers/translation-credentials';
 import { translateTo } from './helpers/translation-helpers';
 import { openExternalUrl } from './helpers/url-helpers';
 import userAgent from './helpers/userAgent-helpers';
@@ -115,6 +124,159 @@ const TRANSLATION_RESULT_CACHE_FILE = userDataPath(
   'translation-result-cache-v1.json',
 );
 const TRANSLATION_RESULT_CACHE_MAX_ENTRIES = 5000;
+const TRANSLATOR_ENGINES = [
+  'Google',
+  'Baidu',
+  'Youdao',
+  'Aliyun',
+  'LibreTranslate',
+  'MyMemory',
+];
+const CONFIGURABLE_TRANSLATOR_ENGINES = new Set([
+  'Google',
+  'Baidu',
+  'Youdao',
+  'Aliyun',
+]);
+let engineStatusCheckedAt = 0;
+let engineStatusCache: { engine: string; available: boolean }[] = [];
+let engineStatusRequest: Promise<typeof engineStatusCache> | null = null;
+let engineStatusGeneration = 0;
+
+const requireMainWindowSender = (sender: Electron.WebContents) => {
+  if (sender !== mainWindow?.webContents) {
+    throw new Error(
+      'Translator settings are available only in the main window',
+    );
+  }
+};
+
+const probeTranslatorEngine = async (engine: string) => {
+  const credentials = CONFIGURABLE_TRANSLATOR_ENGINES.has(engine)
+    ? getProviderCredentials(engine as ConfigurableTranslationEngine)
+    : null;
+  if (['Baidu', 'Youdao', 'Aliyun'].includes(engine) && !credentials) {
+    return { engine, available: false };
+  }
+  try {
+    const result = await Promise.race([
+      translateTo('Good morning', 'zh', engine, {
+        fromLanguage: 'en',
+        baiduAppId: credentials?.appId,
+        baiduSecretKey: credentials?.secretKey,
+        providerCredentials: credentials,
+        allowFallback: false,
+      }),
+      new Promise<null>(resolve => {
+        setTimeout(() => resolve(null), 12_000);
+      }),
+    ]);
+    return {
+      engine,
+      available: Boolean(
+        result &&
+          !result.error &&
+          result.text.trim() &&
+          result.text.trim() !== 'Good morning',
+      ),
+    };
+  } catch {
+    return { engine, available: false };
+  }
+};
+
+const getTranslatorEngineStatus = (force = false) => {
+  if (engineStatusRequest) return engineStatusRequest;
+  if (!force && Date.now() - engineStatusCheckedAt < 600_000) {
+    return Promise.resolve(engineStatusCache);
+  }
+  const generation = engineStatusGeneration;
+  const request = Promise.all(
+    TRANSLATOR_ENGINES.map(engine => probeTranslatorEngine(engine)),
+  )
+    .then(status => {
+      if (generation === engineStatusGeneration) {
+        engineStatusCache = status;
+        engineStatusCheckedAt = Date.now();
+      }
+      return status;
+    })
+    .finally(() => {
+      if (engineStatusRequest === request) engineStatusRequest = null;
+    });
+  engineStatusRequest = request;
+  return request;
+};
+
+ipcMain.handle('translator:get-engine-status', (event, force = false) => {
+  requireMainWindowSender(event.sender);
+  return getTranslatorEngineStatus(Boolean(force));
+});
+
+const requireConfigurableEngine = (engine: string) => {
+  if (!CONFIGURABLE_TRANSLATOR_ENGINES.has(engine)) {
+    throw new Error('Unknown translation provider');
+  }
+  return engine as ConfigurableTranslationEngine;
+};
+
+const notifyTranslatorEnginesChanged = () => {
+  engineStatusGeneration += 1;
+  engineStatusCheckedAt = 0;
+  engineStatusRequest = null;
+  mainWindow?.webContents.send('translator:engines-changed');
+};
+
+ipcMain.handle('translator:get-provider-credential-status', (event, engine) => {
+  requireMainWindowSender(event.sender);
+  return getProviderCredentialStatus(requireConfigurableEngine(engine));
+});
+
+ipcMain.handle(
+  'translator:save-provider-credentials',
+  (event, engine, values) => {
+    requireMainWindowSender(event.sender);
+    const provider = requireConfigurableEngine(engine);
+    saveProviderCredentials(provider, values);
+    notifyTranslatorEnginesChanged();
+    return getProviderCredentialStatus(provider);
+  },
+);
+
+ipcMain.handle('translator:clear-provider-credentials', (event, engine) => {
+  requireMainWindowSender(event.sender);
+  const provider = requireConfigurableEngine(engine);
+  clearProviderCredentials(provider);
+  notifyTranslatorEnginesChanged();
+  return getProviderCredentialStatus(provider);
+});
+
+ipcMain.handle('translator:get-baidu-credential-status', event => {
+  requireMainWindowSender(event.sender);
+  return getBaiduCredentialStatus();
+});
+
+ipcMain.handle('translator:save-baidu-credentials', (event, credentials) => {
+  requireMainWindowSender(event.sender);
+  saveBaiduCredentials(credentials?.appId, credentials?.secretKey);
+  notifyTranslatorEnginesChanged();
+  return getBaiduCredentialStatus();
+});
+
+ipcMain.handle('translator:clear-baidu-credentials', event => {
+  requireMainWindowSender(event.sender);
+  clearSavedBaiduCredentials();
+  notifyTranslatorEnginesChanged();
+  return getBaiduCredentialStatus();
+});
+
+ipcMain.handle('translator:clear-cache', () => {
+  getTranslationCache(
+    TRANSLATION_RESULT_CACHE_FILE,
+    TRANSLATION_RESULT_CACHE_MAX_ENTRIES,
+  )?.clear();
+  return true;
+});
 
 ipcMain.on(
   'app:log-to-file',
@@ -616,27 +778,35 @@ ipcMain.handle(
   async (_e, { text, translateToLanguage, translatorEngine, fromLanguage }) => {
     debug('IPC translate handle called:', {
       textLength: text?.length,
-      textPreview: text?.slice(0, 50),
       translateToLanguage,
       translatorEngine,
       fromLanguage,
     });
 
     try {
+      const providerCredentials = CONFIGURABLE_TRANSLATOR_ENGINES.has(
+        translatorEngine,
+      )
+        ? getProviderCredentials(
+            translatorEngine as ConfigurableTranslationEngine,
+          )
+        : null;
       const response = await translateTo(
         text,
         translateToLanguage,
-        translatorEngine || 'Baidu',
+        translatorEngine || 'Google',
         {
           fromLanguage,
           cacheFilePath: TRANSLATION_RESULT_CACHE_FILE,
+          baiduAppId: providerCredentials?.appId,
+          baiduSecretKey: providerCredentials?.secretKey,
+          providerCredentials,
         },
       );
 
       debug('IPC translate handle response:', {
         success: !response.error,
         textLength: response.text?.length,
-        textPreview: response.text?.slice(0, 50),
         error: response.error,
       });
 
@@ -747,7 +917,7 @@ ipcMain.on(
       debug('Translation request:', {
         serviceId,
         requestId,
-        text: text.slice(0, 50),
+        textLength: String(text || '').length,
         fromLang,
         toLang,
         translatorEngine,
@@ -762,7 +932,6 @@ ipcMain.on(
         toLang,
         translatorEngine,
         originalTextLength: String(text || '').length,
-        originalTextPreview: String(text || '').slice(0, 120),
       });
 
       // 鍑嗗缈昏瘧閫夐」锛屽寘鎷櫨搴?API 閰嶇疆
@@ -773,21 +942,20 @@ ipcMain.on(
       };
 
       // 濡傛灉浣跨敤鐧惧害缈昏瘧锛屽皾璇曚粠鐜鍙橀噺鑾峰彇閰嶇疆锛坱ranslateTo 鍐呴儴浼氫娇鐢ㄥ唴缃厤缃綔涓哄悗澶囷級
-      if (translatorEngine === 'Baidu') {
-        translateOptions.baiduAppId =
-          process.env.BAIDU_TRANSLATE_APP_ID ||
-          process.env.BAIDU_APP_ID ||
-          undefined;
+      if (CONFIGURABLE_TRANSLATOR_ENGINES.has(translatorEngine)) {
+        const savedCredentials = getProviderCredentials(
+          translatorEngine as ConfigurableTranslationEngine,
+        );
+        translateOptions.baiduAppId = savedCredentials?.appId || undefined;
         translateOptions.baiduSecretKey =
-          process.env.BAIDU_TRANSLATE_SECRET_KEY ||
-          process.env.BAIDU_SECRET_KEY ||
-          undefined;
+          savedCredentials?.secretKey || undefined;
+        translateOptions.providerCredentials = savedCredentials;
       }
 
       const response = await translateTo(
         text,
         toLang,
-        translatorEngine || 'Baidu',
+        translatorEngine || 'Google',
         translateOptions,
       );
       // eslint-disable-next-line no-console
@@ -797,8 +965,6 @@ ipcMain.on(
         profile: profile || '',
         reason: reason || '',
         success: !response.error,
-        originalTextPreview: String(text || '').slice(0, 120),
-        translatedTextPreview: String(response.text || '').slice(0, 120),
         translatedTextLength: String(response.text || '').length,
         error: response.error,
       });
@@ -832,7 +998,6 @@ ipcMain.on(
         fromLang,
         toLang,
         translatorEngine,
-        originalTextPreview: String(text || '').slice(0, 120),
         message: error instanceof Error ? error.message : String(error),
       });
       if (mainWindow && serviceId) {

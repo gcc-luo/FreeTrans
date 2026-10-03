@@ -210,6 +210,11 @@ async function triggerSendAndWait(page, expectedText, expectedOriginal = '') {
   await page.locator('div[contenteditable="true"][role="textbox"]').click();
   await page.keyboard.type('你好，今天过得怎么样？');
   await page.locator('button[aria-label="Send message"]').click();
+  await page
+    .locator('[data-ferdium-translation-confirm] button', {
+      hasText: '发送译文',
+    })
+    .click();
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -219,14 +224,8 @@ async function triggerSendAndWait(page, expectedText, expectedOriginal = '') {
     )
     .toContain(expectedText);
   if (expectedOriginal) {
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const rows = [...document.querySelectorAll('div[role="listitem"]')];
-          return String(rows.at(-1)?.textContent || '').trim();
-        }),
-      )
-      .toContain(expectedOriginal);
+    const latestRow = page.locator('div[role="listitem"]').last();
+    await expect(latestRow).not.toContainText(expectedOriginal);
   }
   await expect
     .poll(() =>
@@ -250,6 +249,11 @@ async function triggerSubmitAndWait(page, expectedText) {
       form.dispatchEvent(event);
     }
   });
+  await page
+    .locator('[data-ferdium-translation-confirm] button', {
+      hasText: '发送译文',
+    })
+    .click();
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -258,17 +262,52 @@ async function triggerSubmitAndWait(page, expectedText) {
       }),
     )
     .toContain(expectedText);
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const rows = [...document.querySelectorAll('div[role="listitem"]')];
-        return String(rows.at(-1)?.textContent || '').trim();
-      }),
-    )
-    .toContain('你好');
+  await expect(page.locator('div[role="listitem"]').last()).not.toContainText(
+    '你好',
+  );
 }
 
 test.describe('Google Chat translator e2e simulation (Playwright)', () => {
+  test('取消发送会保留原文草稿', async ({ page }) => {
+    await setupGoogleChatSimulation(page);
+    const composer = page.locator(
+      'div[contenteditable="true"][role="textbox"]',
+    );
+    await composer.click();
+    await page.keyboard.type('你好，保留草稿');
+    await page.locator('button[aria-label="Send message"]').click();
+    await page
+      .locator('[data-ferdium-translation-confirm] button', {
+        hasText: '取消',
+      })
+      .click();
+
+    await expect(composer).toContainText('你好，保留草稿');
+    await expect(page.locator('div[role="listitem"]')).toHaveCount(2);
+  });
+
+  test('编辑译文后只发送编辑后的内容', async ({ page }) => {
+    await setupGoogleChatSimulation(page);
+    const composer = page.locator(
+      'div[contenteditable="true"][role="textbox"]',
+    );
+    await composer.click();
+    await page.keyboard.type('你好，编辑译文');
+    await page.locator('button[aria-label="Send message"]').click();
+    await page
+      .locator('[data-ferdium-translation-confirm] textarea')
+      .fill('Edited English message');
+    await page
+      .locator('[data-ferdium-translation-confirm] button', {
+        hasText: '发送译文',
+      })
+      .click();
+
+    await expect(page.locator('div[role="listitem"]').last()).toHaveText(
+      'Edited English message',
+    );
+  });
+
   test('invoke 主链路：中文发送触发翻译并写入历史预览', async ({ page }) => {
     await setupGoogleChatSimulation(page, { forceHostFallback: false });
     await triggerSendAndWait(page, 'Hello from translation', '你好');
@@ -368,6 +407,12 @@ test.describe('Google Chat translator e2e simulation (Playwright)', () => {
       button.dispatchEvent(clickEvent);
     });
 
+    await page
+      .locator('[data-ferdium-translation-confirm] button', {
+        hasText: '发送译文',
+      })
+      .click();
+
     await expect
       .poll(() =>
         page.evaluate(() => {
@@ -376,14 +421,9 @@ test.describe('Google Chat translator e2e simulation (Playwright)', () => {
         }),
       )
       .toContain('Hello from translation');
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const rows = [...document.querySelectorAll('div[role="listitem"]')];
-          return String(rows.at(-1)?.textContent || '').trim();
-        }),
-      )
-      .toContain('你好');
+    await expect(page.locator('div[role="listitem"]').last()).not.toContainText(
+      '你好',
+    );
 
     const result = await page.evaluate(() => ({
       logs: window.__translatorTestLogs || [],

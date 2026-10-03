@@ -123,7 +123,6 @@ export async function translateWithBaidu(
 ): Promise<{ text: string; error: boolean }> {
   console.log('[Baidu Translate] translateWithBaidu called:', {
     textLength: text?.length,
-    textPreview: text?.slice(0, 50),
     fromLang,
     toLang,
     hasAppId: !!config?.appId,
@@ -224,7 +223,6 @@ export async function translateWithBaidu(
 
     console.log('[Baidu Translate] Translation result:', {
       translatedTextLength: translatedText.length,
-      translatedTextPreview: translatedText.slice(0, 50),
     });
 
     if (!translatedText) {

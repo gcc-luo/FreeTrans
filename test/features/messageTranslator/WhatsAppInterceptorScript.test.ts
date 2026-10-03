@@ -131,7 +131,7 @@ describe('WhatsApp interceptor script regression', () => {
       'ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24) !important;}',
     );
     expect(injectedScript).toContain(
-      'ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e !important;opacity:0.96;}',
+      'ferdium-translator-local-original{display:block;white-space:pre-wrap;color:inherit !important;opacity:0.78;}',
     );
     expect(
       injectedScript.includes(sendCallLegacy) ||
@@ -158,11 +158,9 @@ describe('WhatsApp interceptor script regression', () => {
     expect(injectedScript).not.toContain('original + finalText');
     expect(injectedScript).not.toContain('finalText + "\\n" + original');
     expect(injectedScript).not.toContain('original + "\\n" + finalText');
-    expect(injectedScript).toContain('const translationChanged =');
-    expect(injectedScript).toContain(
-      "'[Ferdium Translator] Translation unchanged, sending original text'",
-    );
-    expect(injectedScript).toContain(
+    expect(injectedScript).toContain('译文与原文相同，请确认发送');
+    expect(injectedScript).toContain('确认发送原文');
+    expect(injectedScript).not.toContain(
       'await triggerNativeSend(preferClick, original, original, operationId);',
     );
     expect(injectedScript).toContain(
@@ -239,7 +237,7 @@ describe('WhatsApp interceptor script regression', () => {
       "'.ferdium-translator-incoming-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',",
     );
     expect(injectedScript).toContain(
-      "'.ferdium-translator-incoming-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',",
+      "'.ferdium-translator-incoming-original{display:block;white-space:pre-wrap;color:inherit;opacity:0.78;}',",
     );
     expect(injectedScript).toContain(
       "'.ferdium-translator-incoming-mismatch{display:block;margin:2px 0 4px;color:#b54708;font-size:11px;line-height:1.25;}',",
@@ -247,19 +245,12 @@ describe('WhatsApp interceptor script regression', () => {
     expect(injectedScript).toContain(
       "const processIncomingMessageRow = async (row, reason = 'unknown') => {",
     );
+    expect(injectedScript).toContain('data-ferdium-incoming-error');
     expect(injectedScript).toContain(
-      'state.settings.targetLanguage = detectedPeerLanguage;',
+      "processIncomingMessageRow(row, 'manual-retry')",
     );
-    expect(
-      injectedScript.includes(
-        "ipcRenderer.sendToHost('translator:incoming-language-detected', {",
-      ) ||
-        injectedScript.includes(
-          "sendToHostSafe('translator:incoming-language-detected', {",
-        ),
-    ).toBe(true);
-    expect(injectedScript).toContain(
-      "inferredLanguage: inferredLanguage || '',",
+    expect(injectedScript).not.toContain(
+      'state.settings.targetLanguage = detectedPeerLanguage;',
     );
     expect(injectedScript).toContain(
       'const translatePlan = buildIncomingTranslatePlan(',

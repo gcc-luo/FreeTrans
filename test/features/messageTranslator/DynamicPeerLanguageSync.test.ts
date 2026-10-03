@@ -37,7 +37,7 @@ const emitIncomingLanguage = (
   });
 };
 
-describe('MessageTranslator dynamic peer language sync', () => {
+describe('MessageTranslator outgoing language preference', () => {
   beforeEach(() => {
     jest.resetModules();
     dynamicGetItemMock.mockClear();
@@ -69,7 +69,7 @@ describe('MessageTranslator dynamic peer language sync', () => {
     DynamicMessageTranslatorStore = storeModule.default;
   });
 
-  it('simulates multi-turn dialogue and dynamically updates targetLanguage', () => {
+  it('keeps the configured outgoing language across incoming languages', () => {
     const store = createStore();
 
     emitIncomingLanguage(store, 'zh', 'jin tian tian qi re', 'turn-1-zh');
@@ -81,13 +81,13 @@ describe('MessageTranslator dynamic peer language sync', () => {
       'The weather is very hot today',
       'turn-2-en',
     );
-    expect(store.getServiceSettings('service-1').targetLanguage).toBe('en');
+    expect(store.getServiceSettings('service-1').targetLanguage).toBe('es');
 
     emitIncomingLanguage(store, 'ru', 'Segodnya ochen zharko', 'turn-3-ru');
-    expect(store.getServiceSettings('service-1').targetLanguage).toBe('ru');
+    expect(store.getServiceSettings('service-1').targetLanguage).toBe('es');
 
     emitIncomingLanguage(store, 'en', 'How are you doing now', 'turn-4-en');
-    expect(store.getServiceSettings('service-1').targetLanguage).toBe('en');
+    expect(store.getServiceSettings('service-1').targetLanguage).toBe('es');
   });
 
   it('ignores unsupported/low-quality updates and keeps current peer language', () => {
@@ -111,11 +111,11 @@ describe('MessageTranslator dynamic peer language sync', () => {
     expect(store.getServiceSettings('service-1').targetLanguage).toBe('es');
   });
 
-  it('supports newly added official languages for dynamic peer sync (e.g. Cantonese)', () => {
+  it('does not replace the outgoing language with Cantonese from another message', () => {
     const store = createStore();
 
     emitIncomingLanguage(store, 'yue', '今日天氣幾好呀', 'turn-yue');
-    expect(store.getServiceSettings('service-1').targetLanguage).toBe('yue');
+    expect(store.getServiceSettings('service-1').targetLanguage).toBe('es');
   });
 
   it('does not auto-sync peer language when receiveTranslation is disabled', () => {

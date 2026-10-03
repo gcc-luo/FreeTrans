@@ -7,10 +7,21 @@ import { clearTranslationCacheInstancesForTests } from '../../src/helpers/transl
 jest.mock('../../src/helpers/baidu-translate', () => ({
   translateWithBaidu: jest.fn(),
 }));
+jest.mock('../../src/helpers/translation-provider-apis', () => ({
+  translateWithGoogleCloud: jest.fn(),
+  translateWithYoudao: jest.fn(),
+  translateWithAliyun: jest.fn(),
+}));
 
 // eslint-disable-next-line global-require
 const { translateWithBaidu } = require('../../src/helpers/baidu-translate') as {
   translateWithBaidu: jest.Mock;
+};
+// eslint-disable-next-line global-require
+const providerApis = require('../../src/helpers/translation-provider-apis') as {
+  translateWithGoogleCloud: jest.Mock;
+  translateWithYoudao: jest.Mock;
+  translateWithAliyun: jest.Mock;
 };
 // eslint-disable-next-line global-require
 const { translateTo } = require('../../src/helpers/translation-helpers') as {
@@ -26,6 +37,9 @@ describe('translation-helpers cache behavior', () => {
     cacheFilePath = join(tempDir, 'translation-cache.json');
     clearTranslationCacheInstancesForTests();
     translateWithBaidu.mockReset();
+    providerApis.translateWithYoudao.mockReset();
+    providerApis.translateWithAliyun.mockReset();
+    providerApis.translateWithGoogleCloud.mockReset();
   });
 
   afterEach(() => {
@@ -54,6 +68,106 @@ describe('translation-helpers cache behavior', () => {
     expect(first.text).toBe('bonjour');
     expect(second.text).toBe('bonjour');
     expect(translateWithBaidu).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires explicit Baidu credentials', async () => {
+    const keys = [
+      'BAIDU_TRANSLATE_APP_ID',
+      'BAIDU_APP_ID',
+      'BAIDU_TRANSLATE_SECRET_KEY',
+      'BAIDU_SECRET_KEY',
+    ];
+    const previous = keys.map(key => process.env[key]);
+    try {
+      keys.forEach(key => {
+        Reflect.deleteProperty(process.env, key);
+      });
+      const result = await translateTo('你好', 'en', 'Baidu');
+      expect(result.error).toBe(true);
+      expect(translateWithBaidu).not.toHaveBeenCalled();
+    } finally {
+      keys.forEach((key, index) => {
+        if (previous[index] === undefined)
+          Reflect.deleteProperty(process.env, key);
+        else process.env[key] = previous[index];
+      });
+    }
+  });
+
+  it('checks only the selected engine when fallback is disabled', async () => {
+    const previousFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({ ok: false, status: 503 });
+    global.fetch = fetchMock;
+    try {
+      const result = await translateTo('Good morning', 'zh', 'Google', {
+        fromLanguage: 'en',
+        allowFallback: false,
+      });
+      expect(result.error).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0][0])).toContain(
+        'translate.googleapis.com',
+      );
+    } finally {
+      global.fetch = previousFetch;
+    }
+  });
+
+  it('uses MyMemory directly when selected for an availability check', async () => {
+    const previousFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ responseData: { translatedText: '早上好' } }),
+    });
+    global.fetch = fetchMock;
+    try {
+      const result = await translateTo('Good morning', 'zh', 'MyMemory', {
+        fromLanguage: 'en',
+        allowFallback: false,
+      });
+      expect(result).toEqual({ text: '早上好', error: false });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0][0])).toContain(
+        'mymemory.translated.net',
+      );
+    } finally {
+      global.fetch = previousFetch;
+    }
+  });
+
+  it('dispatches configured domestic engines without falling back', async () => {
+    providerApis.translateWithYoudao.mockResolvedValue('你好');
+    providerApis.translateWithAliyun.mockResolvedValue('早上好');
+    const youdao = await translateTo('Hello', 'zh', 'Youdao', {
+      fromLanguage: 'en',
+      providerCredentials: { appKey: 'id', appSecret: 'secret' },
+      allowFallback: false,
+    });
+    const aliyun = await translateTo('Good morning', 'zh', 'Aliyun', {
+      fromLanguage: 'en',
+      providerCredentials: { accessKeyId: 'id', accessKeySecret: 'secret' },
+      allowFallback: false,
+    });
+    expect(youdao).toEqual({ text: '你好', error: false });
+    expect(aliyun).toEqual({ text: '早上好', error: false });
+    expect(providerApis.translateWithYoudao).toHaveBeenCalledTimes(1);
+    expect(providerApis.translateWithAliyun).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the configured Google Cloud API when an API key is saved', async () => {
+    providerApis.translateWithGoogleCloud.mockResolvedValue('你好');
+    const result = await translateTo('Hello', 'zh', 'Google', {
+      fromLanguage: 'en',
+      providerCredentials: { apiKey: 'google-key' },
+      allowFallback: false,
+    });
+    expect(result).toEqual({ text: '你好', error: false });
+    expect(providerApis.translateWithGoogleCloud).toHaveBeenCalledWith(
+      'Hello',
+      'en',
+      'zh',
+      'google-key',
+    );
   });
 
   it('re-translates when target language changes', async () => {

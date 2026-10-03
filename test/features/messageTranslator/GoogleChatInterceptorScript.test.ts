@@ -359,14 +359,11 @@ describe('Google Chat interceptor script', () => {
   });
 
   describe('Google Chat send format and language switching', () => {
-    it('sends translated text with separator and original text', async () => {
+    it('confirms and sends only the edited translation', async () => {
       const script = await captureInjectedScript();
-      expect(script).not.toContain('\\u2014\\u2014 Original \\u2014\\u2014');
-      expect(script).toContain(
-        "isGoogleChatProfile() && String(original || '').trim()",
-      );
-      expect(script).toContain('----------------');
-      expect(script).toContain("String(original || '').trim()");
+      expect(script).toContain('confirmTranslatedMessage(original, finalText)');
+      expect(script).toContain('const finalSendText = confirmedText;');
+      expect(script).not.toContain('----------------');
     });
 
     it('keeps local preview decoration path gated for non-Google profiles', async () => {
@@ -381,8 +378,7 @@ describe('Google Chat interceptor script', () => {
 
     it('does not auto-overwrite target language from incoming detection', async () => {
       const script = await captureInjectedScript();
-      expect(script).toContain('!isGoogleChatProfile() &&');
-      expect(script).toContain(
+      expect(script).not.toContain(
         'state.settings.targetLanguage = detectedPeerLanguage;',
       );
     });
@@ -493,7 +489,7 @@ describe('Google Chat interceptor script', () => {
         'ferdium-translator-local-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24) !important;}',
       );
       expect(script).toContain(
-        'ferdium-translator-local-original{display:block;white-space:pre-wrap;color:#0b7f3e !important;opacity:0.96;}',
+        'ferdium-translator-local-original{display:block;white-space:pre-wrap;color:inherit !important;opacity:0.78;}',
       );
       expect(script).toContain(
         'ferdium-translator-incoming-translation{display:block;',
@@ -502,7 +498,7 @@ describe('Google Chat interceptor script', () => {
         'ferdium-translator-incoming-divider{display:block;height:0;margin:6px 0 4px;border-top:1px solid rgba(16,24,40,0.24);}',
       );
       expect(script).toContain(
-        'ferdium-translator-incoming-original{display:block;white-space:pre-wrap;color:#0b7f3e;opacity:0.96;}',
+        'ferdium-translator-incoming-original{display:block;white-space:pre-wrap;color:inherit;opacity:0.78;}',
       );
       expect(script).toContain(
         'ferdium-translator-incoming-mismatch{display:block;margin:2px 0 4px;color:#b54708;font-size:11px;line-height:1.25;}',
@@ -559,14 +555,6 @@ describe('Google Chat interceptor script', () => {
         script.includes(
           "ipcRenderer.sendToHost('translator:translate-message'",
         ) || script.includes("sendToHostSafe('translator:translate-message'"),
-      ).toBe(true);
-      expect(
-        script.includes(
-          "ipcRenderer.sendToHost('translator:incoming-language-detected'",
-        ) ||
-          script.includes(
-            "sendToHostSafe('translator:incoming-language-detected'",
-          ),
       ).toBe(true);
       expect(
         script.includes("ipcRenderer.sendToHost('translator:initialized'") ||
@@ -640,13 +628,11 @@ describe('Google Chat interceptor script', () => {
       ).toBe(true);
     });
 
-    it('contains translation unchanged path', async () => {
+    it('requires confirmation when translation is unchanged', async () => {
       const script = await captureInjectedScript();
-      expect(script).toContain('const translationChanged =');
-      expect(script).toContain(
-        "'[Ferdium Translator] Translation unchanged, sending original text'",
-      );
-      expect(script).toContain(
+      expect(script).toContain('译文与原文相同，请确认发送');
+      expect(script).toContain('确认发送原文');
+      expect(script).not.toContain(
         'await triggerNativeSend(preferClick, original, original, operationId)',
       );
     });

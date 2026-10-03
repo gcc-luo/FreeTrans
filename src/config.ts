@@ -285,6 +285,10 @@ export const TRANSLATOR_ENGINE_NAMES = {
   [TRANSLATOR_ENGINE_LIBRETRANSLATE]:
     'Ferdium Translator (Powered by LibreTranslate)',
   [TRANSLATOR_ENGINE_GOOGLE]: 'Google',
+  Baidu: '百度翻译',
+  Youdao: '网易有道翻译',
+  Aliyun: '阿里云机器翻译',
+  MyMemory: 'MyMemory',
 };
 
 export const LIBRETRANSLATE_TRANSLATOR_LANGUAGES = {

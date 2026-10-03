@@ -1,9 +1,11 @@
 import { createHash } from 'node:crypto';
+import { chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 import {
   ensureDirSync,
   pathExistsSync,
   readJsonSync,
+  removeSync,
   writeJsonSync,
 } from 'fs-extra';
 
@@ -193,10 +195,16 @@ export class TranslationCache {
     this.persistToDisk();
   }
 
+  clear() {
+    this.entryByKey.clear();
+    if (this.filePath) removeSync(this.filePath);
+  }
+
   private loadFromDisk() {
     if (!this.filePath) return;
     if (!pathExistsSync(this.filePath)) return;
     try {
+      if (process.platform !== 'win32') chmodSync(this.filePath, 0o600);
       const payload = readJsonSync(this.filePath, {
         throws: false,
       }) as TranslationCacheFilePayload | null;
@@ -252,7 +260,9 @@ export class TranslationCache {
       };
       writeJsonSync(this.filePath, payload, {
         spaces: 2,
+        mode: 0o600,
       });
+      if (process.platform !== 'win32') chmodSync(this.filePath, 0o600);
     } catch (error) {
       debug('Failed to persist translation cache to disk', {
         filePath: this.filePath,

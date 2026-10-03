@@ -6,7 +6,7 @@ export const IPC = {
 export const DEFAULT_TRANSLATOR_SETTINGS = {
   myLanguage: 'zh',
   targetLanguage: 'en',
-  translatorEngine: 'Baidu',
+  translatorEngine: 'Google',
   panelTheme: 'light',
   sendTranslation: true,
   receiveTranslation: true,

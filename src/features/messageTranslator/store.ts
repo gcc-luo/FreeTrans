@@ -39,11 +39,6 @@ export default class MessageTranslatorStore extends FeatureStore {
 
   _whatsAppRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  _dynamicPeerLanguageLastApplied = new Map<
-    string,
-    { language: string; at: number }
-  >();
-
   constructor() {
     super();
     makeObservable(this);
@@ -115,7 +110,6 @@ export default class MessageTranslatorStore extends FeatureStore {
       clearTimeout(timer);
     }
     this._whatsAppRetryTimers.clear();
-    this._dynamicPeerLanguageLastApplied.clear();
     this._injectedWhatsAppServices.clear();
     this.isFeatureActive = false;
   }
@@ -382,7 +376,7 @@ export default class MessageTranslatorStore extends FeatureStore {
     const initialSettingsJson = JSON.stringify({
       myLanguage: actualSettings.myLanguage || 'zh',
       targetLanguage: actualSettings.targetLanguage || 'en',
-      translatorEngine: actualSettings.translatorEngine || 'Baidu',
+      translatorEngine: actualSettings.translatorEngine || 'Google',
       sendTranslation: actualSettings.sendTranslation !== false,
       receiveTranslation: actualSettings.receiveTranslation !== false,
       showOriginalText: actualSettings.showOriginalText === true,
@@ -1042,7 +1036,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             dataLexical: el.getAttribute('data-lexical-editor'),
             inFooter: !!el.closest('footer'),
             className: String(el.className || '').slice(0, 120),
-            htmlPreview: String(el.innerHTML || '').slice(0, 120),
+            htmlLength: String(el.innerHTML || '').length,
           };
         };
 
@@ -1078,21 +1072,21 @@ export default class MessageTranslatorStore extends FeatureStore {
             if (node.nodeType === Node.TEXT_NODE) {
               return {
                 kind: 'text',
-                text: String(node.textContent || '').trim().slice(0, 80),
+                textLength: String(node.textContent || '').trim().length,
               };
             }
             if (node instanceof Element) {
               return {
                 kind: 'element',
                 tag: node.tagName,
-                text: String(node.textContent || '').trim().slice(0, 80),
+                textLength: String(node.textContent || '').trim().length,
               };
             }
             return { kind: 'node', nodeType: node.nodeType };
           });
           const paragraphs = paragraphNodes.map((p, index) => ({
             index,
-            text: String(p.textContent || '').trim().slice(0, 120),
+            textLength: String(p.textContent || '').trim().length,
             childCount: p.childNodes.length,
             childTags: Array.from(p.children)
               .slice(0, 6)
@@ -1480,6 +1474,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             'span[' + INCOMING_TRANSLATION_ATTR + '="1"]',
             'span[' + INCOMING_DIVIDER_ATTR + '="1"]',
             'span[' + INCOMING_MISMATCH_ATTR + '="1"]',
+            '[data-ferdium-incoming-error="1"]',
           ];
           for (const selector of cleanupSelectors) {
             clone.querySelectorAll(selector).forEach(node => {
@@ -1920,7 +1915,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                     translatedText: normalizedTranslated,
                     fromLanguage: state.settings.myLanguage || '',
                     toLanguage: state.settings.targetLanguage || '',
-                    translatorEngine: state.settings.translatorEngine || 'Baidu',
+                    translatorEngine: state.settings.translatorEngine || 'Google',
                     reason,
                   },
                 );
@@ -2003,10 +1998,10 @@ export default class MessageTranslatorStore extends FeatureStore {
                       '[Ferdium Translator] Outgoing history lookup miss: ' +
                         JSON.stringify({
                           reason,
-                          translatedPreview: translatedText.substring(0, 80),
+                          translatedLength: translatedText.length,
                           fromLanguage: state.settings.myLanguage || '',
                           toLanguage: state.settings.targetLanguage || '',
-                          translatorEngine: state.settings.translatorEngine || 'Baidu',
+                          translatorEngine: state.settings.translatorEngine || 'Google',
                         }),
                     );
                   } catch (_e) {}
@@ -2030,8 +2025,8 @@ export default class MessageTranslatorStore extends FeatureStore {
                     '[Ferdium Translator] Outgoing history preview restored: ' +
                       JSON.stringify({
                         reason,
-                        translatedPreview: translatedText.substring(0, 80),
-                        originalPreview: originalText.substring(0, 80),
+                        translatedLength: translatedText.length,
+                        originalLength: originalText.length,
                       }),
                   );
                 } catch (_e) {}
@@ -2291,11 +2286,11 @@ export default class MessageTranslatorStore extends FeatureStore {
                 forceDomReplace,
                 isLexicalComposer,
                 allowDirectDomMutations,
-                targetText: normalized.substring(0, 120),
-                targetComparable: toComparableText(normalized),
-                originalComparable: toComparableText(originalText),
-                beforeText: beforeText.substring(0, 120),
-                beforeComparable: toComparableText(beforeText),
+                targetTextLength: normalized.length,
+                targetComparableLength: toComparableText(normalized).length,
+                originalComparableLength: toComparableText(originalText).length,
+                beforeTextLength: beforeText.length,
+                beforeComparableLength: toComparableText(beforeText).length,
                 target: getComposerDebug(el),
                 beforeStructure: getComposerStructure(el),
               }),
@@ -2339,10 +2334,10 @@ export default class MessageTranslatorStore extends FeatureStore {
                   setId,
                   reason,
                   forceDomReplace,
-                  before: beforeValue.substring(0, 120),
-                  after: afterInputText.substring(0, 120),
-                  targetComparable: toComparableText(normalized),
-                  afterComparable: toComparableText(afterInputText),
+                  beforeLength: beforeValue.length,
+                  afterLength: afterInputText.length,
+                  targetComparableLength: toComparableText(normalized).length,
+                  afterComparableLength: toComparableText(afterInputText).length,
                   looselyMatched: isTextLooselyMatched(afterInputText, normalized),
                 }),
               );
@@ -2528,7 +2523,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                     isLexicalComposer,
                     hasEditor: true,
                     editorKeys: Object.keys(editor).slice(0, 15),
-                    after: String(after || '').substring(0, 120),
+                    afterLength: String(after || '').length,
                     ok,
                   }),
                 );
@@ -2571,8 +2566,8 @@ export default class MessageTranslatorStore extends FeatureStore {
                     setId,
                     strategy: 'execCommand.insertText',
                     isLexicalComposer,
-                    selectedText: selectedText.substring(0, 120),
-                    after: String(after || '').substring(0, 120),
+                    selectedTextLength: selectedText.length,
+                    afterLength: String(after || '').length,
                     ok,
                   }),
                 );
@@ -2618,8 +2613,8 @@ export default class MessageTranslatorStore extends FeatureStore {
                     setId,
                     strategy: 'lexical.beforeinput.insertReplacementText',
                     isLexicalComposer,
-                    selectedText: selectedText.substring(0, 120),
-                    after: String(after || '').substring(0, 120),
+                    selectedTextLength: selectedText.length,
+                    afterLength: String(after || '').length,
                     ok,
                   }),
                 );
@@ -2724,8 +2719,8 @@ export default class MessageTranslatorStore extends FeatureStore {
                     strategy: 'pasteEvent',
                     isLexicalComposer,
                     dispatched,
-                    selectedText: selectedText.substring(0, 120),
-                    after: String(after || '').substring(0, 120),
+                    selectedTextLength: selectedText.length,
+                    afterLength: String(after || '').length,
                     ok,
                   }),
                 );
@@ -2872,20 +2867,20 @@ export default class MessageTranslatorStore extends FeatureStore {
                 usedSyntheticBeforeInput: replacedBySyntheticBeforeInput,
                 usedPasteEvent: replacedByPasteEvent,
                 usedDomReplace: replacedByDomReplace,
-                beforeText: beforeText.substring(0, 120),
-                afterText: afterText.substring(0, 120),
-                targetText: normalized.substring(0, 120),
-                beforeComparable: toComparableText(beforeText),
-                afterComparable: comparableAfter,
-                targetComparable: comparableTarget,
-                originalComparable: comparableOriginal,
+                beforeTextLength: beforeText.length,
+                afterTextLength: afterText.length,
+                targetTextLength: normalized.length,
+                beforeComparableLength: toComparableText(beforeText).length,
+                afterComparableLength: comparableAfter.length,
+                targetComparableLength: comparableTarget.length,
+                originalComparableLength: comparableOriginal.length,
                 looselyMatched: isTextLooselyMatched(afterText, normalized),
                 containsOriginal:
                   !!comparableOriginal && !!comparableAfter && comparableAfter.includes(comparableOriginal),
                 containsTarget:
                   !!comparableTarget && !!comparableAfter && comparableAfter.includes(comparableTarget),
                 structure: getComposerStructure(el),
-                afterHtml: String(el.innerHTML || '').substring(0, 180),
+                afterHtmlLength: String(el.innerHTML || '').length,
               }),
             );
           } catch (_e) {}
@@ -2937,7 +2932,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               console.log('[Ferdium Translator] Textarea fallback result:', {
                 operationId,
                 ok,
-                after: after?.substring(0, 120),
+                afterLength: after?.length,
               });
             } catch (_e) {}
             if (ok) return true;
@@ -2965,7 +2960,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               console.log('[Ferdium Translator] Footer composer fallback result:', {
                 operationId,
                 ok,
-                after: after?.substring(0, 120),
+                afterLength: after?.length,
               });
             } catch (_e) {}
             return ok;
@@ -3164,6 +3159,64 @@ export default class MessageTranslatorStore extends FeatureStore {
           node.style.display = on ? 'block' : 'none';
         };
 
+        const confirmTranslatedMessage = (original, translated) =>
+          new Promise(resolve => {
+            const overlay = document.createElement('div');
+            overlay.setAttribute('data-ferdium-translation-confirm', '1');
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.48);display:flex;align-items:center;justify-content:center;padding:16px;';
+            const card = document.createElement('div');
+            card.style.cssText = 'width:min(480px,100%);max-height:90vh;overflow:auto;background:#fff;color:#1f2937;border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.25);font:14px/1.5 sans-serif;';
+            const title = document.createElement('strong');
+            title.textContent = original.trim() === translated.trim()
+              ? '译文与原文相同，请确认发送'
+              : '确认发送译文';
+            const sourceLabel = document.createElement('p');
+            sourceLabel.textContent = '原文（仅供核对）';
+            const source = document.createElement('div');
+            source.textContent = original;
+            source.style.cssText = 'white-space:pre-wrap;max-height:100px;overflow:auto;padding:8px;background:#f3f4f6;border-radius:6px;';
+            const translationLabel = document.createElement('p');
+            translationLabel.textContent = '将发送给对方的内容（可编辑）';
+            const editor = document.createElement('textarea');
+            editor.value = translated;
+            editor.setAttribute('aria-label', '将发送给对方的译文');
+            editor.style.cssText = 'box-sizing:border-box;width:100%;min-height:100px;padding:8px;resize:vertical;border:1px solid #9ca3af;border-radius:6px;font:inherit;';
+            const actions = document.createElement('div');
+            actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:12px;';
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.textContent = '取消';
+            const send = document.createElement('button');
+            send.type = 'button';
+            send.textContent = original.trim() === translated.trim()
+              ? '确认发送原文'
+              : '发送译文';
+            send.style.cssText = 'background:#2563eb;color:#fff;border:0;border-radius:6px;padding:6px 12px;';
+            cancel.style.cssText = 'background:#f3f4f6;border:0;border-radius:6px;padding:6px 12px;';
+            const finish = value => {
+              overlay.remove();
+              resolve(value);
+            };
+            cancel.addEventListener('click', () => finish(null));
+            send.addEventListener('click', () => {
+              const value = editor.value.trim();
+              if (value) finish(value);
+              else editor.focus();
+            });
+            overlay.addEventListener('keydown', event => {
+              event.stopPropagation();
+              if (event.key === 'Escape') finish(null);
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                send.click();
+              }
+            });
+            actions.append(cancel, send);
+            card.append(title, sourceLabel, source, translationLabel, editor, actions);
+            overlay.appendChild(card);
+            document.body.appendChild(overlay);
+            editor.focus();
+          });
+
         const translateByInvoke = async (text, options = {}) => {
           console.log('[Ferdium Translator] translateByInvoke called');
           if (!hasDirectInvoke && !canUseTopBridge) {
@@ -3176,13 +3229,16 @@ export default class MessageTranslatorStore extends FeatureStore {
             translateToLanguage:
               options.toLang || state.settings.targetLanguage || 'en',
             translatorEngine:
-              options.translatorEngine || state.settings.translatorEngine || 'Baidu',
+              options.translatorEngine || state.settings.translatorEngine || 'Google',
             fromLanguage: options.fromLang || state.settings.myLanguage || 'auto',
           };
           console.log(
             '[Ferdium Translator] Invoking translate with params:',
             JSON.stringify({
-              ...requestParams,
+              textLength: String(text || '').length,
+              translateToLanguage: requestParams.translateToLanguage,
+              fromLanguage: requestParams.fromLanguage,
+              translatorEngine: requestParams.translatorEngine,
               reason: options.reason || 'unspecified',
             }),
           );
@@ -3194,12 +3250,11 @@ export default class MessageTranslatorStore extends FeatureStore {
               hasResponse: !!response,
               hasError: response?.error,
               textLength: response?.text?.length,
-              textPreview: response?.text?.substring(0, 50),
             }),
           );
 
           if (!response || response.error) {
-            console.error('[Ferdium Translator] translate invoke failed:', response);
+            console.error('[Ferdium Translator] translate invoke failed:', { hasResponse: !!response, error: response?.error });
             throw new Error(response?.text || 'translate-failed');
           }
 
@@ -3209,7 +3264,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             throw new Error('empty-translation');
           }
 
-          console.log('[Ferdium Translator] translateByInvoke success:', translatedText.substring(0, 50));
+          console.log('[Ferdium Translator] translateByInvoke success, length:', translatedText.length);
           return translatedText;
         };
 
@@ -3225,7 +3280,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             const fromLang = options.fromLang || state.settings.myLanguage || 'auto';
             const toLang = options.toLang || state.settings.targetLanguage || 'en';
             const translatorEngine =
-              options.translatorEngine || state.settings.translatorEngine || 'Baidu';
+              options.translatorEngine || state.settings.translatorEngine || 'Google';
             const translateReason = String(options.reason || 'unspecified');
 
             try {
@@ -3234,7 +3289,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                   JSON.stringify({
                     requestId,
                     profile: activeProfile,
-                    text: text.substring(0, 50),
+                    textLength: text.length,
                     textLength: String(text || '').length,
                     fromLang,
                     toLang,
@@ -3263,12 +3318,12 @@ export default class MessageTranslatorStore extends FeatureStore {
         const translate = async (text, options = {}) => {
           console.log(
             '[Ferdium Translator] translate() called with text:',
-            text.substring(0, 50),
+            text.length,
           );
           try {
             console.log('[Ferdium Translator] Trying translateByInvoke');
             const result = await translateByInvoke(text, options);
-            console.log('[Ferdium Translator] translateByInvoke succeeded:', result.substring(0, 50));
+            console.log('[Ferdium Translator] translateByInvoke succeeded, length:', result.length);
             return result;
           } catch (invokeError) {
             console.warn(
@@ -3277,7 +3332,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             );
             console.log('[Ferdium Translator] Trying translateByHostMessage');
             const result = await translateByHostMessage(text, options);
-            console.log('[Ferdium Translator] translateByHostMessage succeeded:', result.substring(0, 50));
+            console.log('[Ferdium Translator] translateByHostMessage succeeded, length:', result.length);
             return result;
           }
         };
@@ -3328,7 +3383,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                 expectedLanguage: normalizedExpected,
                 detectedLanguage,
                 match,
-                textPreview: normalizedText.substring(0, 60),
+                textLength: normalizedText.length,
               }),
             );
           } catch (_e) {}
@@ -3347,17 +3402,43 @@ export default class MessageTranslatorStore extends FeatureStore {
                   JSON.stringify({
                     reason,
                     profile: activeProfile,
-                    rowPreview: String(row.innerText || row.textContent || '')
-                      .trim()
-                      .slice(0, 100),
+                    rowLength: String(row.innerText || row.textContent || '').length,
                   }),
               );
             } catch (_e) {}
             return;
           }
 
+          const showIncomingFailure = () => {
+            if (textContainer.querySelector('[data-ferdium-incoming-error="1"]')) return;
+            row.setAttribute('data-ferdium-incoming-error-source', originalComparable);
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.setAttribute('data-ferdium-incoming-error', '1');
+            retry.textContent = '翻译失败，点击重试';
+            retry.style.cssText = 'display:block;margin-top:4px;border:0;background:transparent;color:#b42318;cursor:pointer;font-size:11px;padding:0;';
+            retry.addEventListener('click', event => {
+              event.preventDefault();
+              event.stopPropagation();
+              retry.remove();
+              row.removeAttribute('data-ferdium-incoming-error-source');
+              processIncomingMessageRow(row, 'manual-retry');
+            });
+            textContainer.appendChild(retry);
+          };
+
           const originalText = extractIncomingOriginalText(textContainer);
           const originalComparable = toComparableText(originalText);
+          if (
+            reason !== 'manual-retry' &&
+            row.getAttribute('data-ferdium-incoming-error-source') === originalComparable
+          ) {
+            return;
+          }
+          if (row.getAttribute('data-ferdium-incoming-error-source') !== originalComparable) {
+            textContainer.querySelector('[data-ferdium-incoming-error="1"]')?.remove();
+            row.removeAttribute('data-ferdium-incoming-error-source');
+          }
           if (!originalText || !originalComparable) {
             try {
               console.log(
@@ -3413,7 +3494,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                     detectedLanguage,
                     inferredLanguage,
                     effectiveDetectedLanguage,
-                    samplePreview: originalText.substring(0, 80),
+                    sampleLength: originalText.length,
                   },
                 );
               } catch (_e) {}
@@ -3430,7 +3511,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                     detectedLanguage,
                     inferredLanguage,
                     effectiveDetectedLanguage,
-                    samplePreview: originalText.substring(0, 80),
+                    sampleLength: originalText.length,
                     sampleLength: originalText.length,
                   },
                 );
@@ -3440,44 +3521,9 @@ export default class MessageTranslatorStore extends FeatureStore {
               ? ''
               : effectiveDetectedLanguage;
 
-            const detectedPeerLanguage = toSettingsLanguageCode(
-              planDetectedLanguage,
-            );
-            const configuredPeerLanguage = toSettingsLanguageCode(
-              state.settings.targetLanguage || '',
-            );
-            const myLanguage = toSettingsLanguageCode(
-              state.settings.myLanguage || 'zh',
-            );
-            if (
-              !isGoogleChatProfile() &&
-              !lowConfidenceIncomingDetection &&
-              detectedPeerLanguage &&
-              detectedPeerLanguage !== configuredPeerLanguage &&
-              detectedPeerLanguage !== myLanguage
-            ) {
-              state.settings.targetLanguage = detectedPeerLanguage;
-              sendToHostSafe('translator:incoming-language-detected', {
-                detectedLanguage: detectedPeerLanguage,
-                rawDetectedLanguage: detectedLanguage || '',
-                inferredLanguage: inferredLanguage || '',
-                sample: originalText.slice(0, 160),
-                sampleLength: originalText.length,
-                reason,
-              });
-              try {
-                console.log(
-                  '[Ferdium Translator] Reported incoming detected language',
-                  {
-                    reason,
-                    detectedLanguage: detectedPeerLanguage,
-                    rawDetectedLanguage: detectedLanguage,
-                    inferredLanguage,
-                    previousConfiguredPeerLanguage: configuredPeerLanguage,
-                  },
-                );
-              } catch (_e) {}
-            }
+            // Detection is scoped to this message. The service target language is
+            // the user's outgoing preference and must not change when another
+            // contact or group member writes in a different language.
             const translatePlan = buildIncomingTranslatePlan(
               planDetectedLanguage,
               {
@@ -3517,6 +3563,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               !translatedText ||
               toComparableText(translatedText) === originalComparable
             ) {
+              showIncomingFailure();
               return;
             }
 
@@ -3571,6 +3618,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                   },
                 );
               } catch (_e) {}
+              showIncomingFailure();
               return;
             }
 
@@ -3581,8 +3629,12 @@ export default class MessageTranslatorStore extends FeatureStore {
               translatePlan,
             );
             if (!applied) {
+              showIncomingFailure();
               return;
             }
+
+            textContainer.querySelector('[data-ferdium-incoming-error="1"]')?.remove();
+            row.removeAttribute('data-ferdium-incoming-error-source');
 
             row.setAttribute(INCOMING_PREVIEW_ATTR, '1');
             row.setAttribute(
@@ -3602,11 +3654,12 @@ export default class MessageTranslatorStore extends FeatureStore {
                 configuredPeerLanguage: translatePlan.configuredPeerLanguage,
                 detectedSourceLanguage: translatePlan.detectedLanguage,
                 languageMismatch: translatePlan.languageMismatch,
-                originalPreview: originalText.substring(0, 80),
-                translatedPreview: translatedText.substring(0, 80),
+                originalLength: originalText.length,
+                translatedLength: translatedText.length,
               });
             } catch (_e) {}
           } catch (error) {
+            showIncomingFailure();
             try {
               console.warn('[Ferdium Translator] Incoming translation failed', {
                 reason,
@@ -3864,8 +3917,8 @@ export default class MessageTranslatorStore extends FeatureStore {
               instanceId,
               operationId,
               preferClick,
-              desiredText: String(desiredText || '').substring(0, 120),
-              originalText: String(originalText || '').substring(0, 120),
+              desiredTextLength: String(desiredText || '').length,
+              originalTextLength: String(originalText || '').length,
             }));
           } catch (_e) {}
 
@@ -3983,8 +4036,8 @@ export default class MessageTranslatorStore extends FeatureStore {
             console.log('[Ferdium Translator] triggerNativeSend end:', JSON.stringify({
               instanceId,
               operationId,
-              beforeSend: String(beforeSend || '').substring(0, 120),
-              afterFirstAttempt: String(afterFirstAttempt || '').substring(0, 120),
+              beforeSendLength: String(beforeSend || '').length,
+              afterFirstAttemptLength: String(afterFirstAttempt || '').length,
             }));
           } catch (_e) {}
         };
@@ -4055,6 +4108,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           }
 
           let hideStatusImmediately = true;
+          let nativeSendAttempted = false;
           state.translating = true;
           state.activeTranslateOpId = operationId;
           showStatus('Translating...', true, false);
@@ -4066,7 +4120,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               operationId,
               triggerSource,
             });
-            console.log('[Ferdium Translator] Original text:', original);
+            console.log('[Ferdium Translator] Original text length:', original.length);
             console.log(
               '[Ferdium Translator] Settings:',
               JSON.stringify({
@@ -4122,13 +4176,17 @@ export default class MessageTranslatorStore extends FeatureStore {
               );
             }
 
+            if (!outgoingValidation.match) {
+              throw new Error('译文语言与目标语言不符，请检查语言设置后重试');
+            }
+
             console.log(
               '[Ferdium Translator] Translation result:',
               JSON.stringify({
                 instanceId,
                 operationId,
-                original: original.substring(0, 100),
-                translated: finalText.substring(0, 100),
+                originalLength: original.length,
+                translatedLength: finalText.length,
                 success: finalText !== original,
                 translatedLength: finalText.length,
                 detectedOutgoingSource,
@@ -4136,30 +4194,15 @@ export default class MessageTranslatorStore extends FeatureStore {
                 outgoingValidation,
               }),
             );
-            const translationChanged =
-              toComparableText(finalText) !== toComparableText(original);
-            if (!translationChanged) {
-              console.log(
-                '[Ferdium Translator] Translation unchanged, sending original text',
-                {
-                  operationId,
-                },
-              );
-              state.bypassSendUntil = Date.now() + 2400;
-              await triggerNativeSend(preferClick, original, original, operationId);
-              console.log(
-                '[Ferdium Translator] ===== Translation and send completed (unchanged) =====',
-                { operationId },
-              );
+            showStatus('', false, false);
+            const confirmedText = await confirmTranslatedMessage(original, finalText);
+            if (!confirmedText) {
               return;
             }
-            const finalSendText =
-              isGoogleChatProfile() && String(original || '').trim()
-                ? String(finalText || '') + '\\n\\n----------------\\n' + String(original || '').trim()
-                : finalText;
+            const finalSendText = confirmedText;
             console.log(
               '[Ferdium Translator] Setting composer text to:',
-              finalSendText.substring(0, 120),
+              finalSendText.length,
             );
             let activeComposer = composer;
             let isLexicalFlow =
@@ -4171,7 +4214,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             });
             await sleep(180);
             let afterSet = getComposerText(activeComposer);
-            console.log('[Ferdium Translator] After first set, composer text:', afterSet?.substring(0, 100));
+            console.log('[Ferdium Translator] After first set, composer text:', afterSet?.length);
 
             if (!isComposerSynced(afterSet, finalSendText, original)) {
               if (isLexicalFlow) {
@@ -4213,7 +4256,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                 });
                 await sleep(260);
                 afterSet = getComposerText(activeComposer);
-                console.log('[Ferdium Translator] After second set, composer text:', afterSet?.substring(0, 100));
+                console.log('[Ferdium Translator] After second set, composer text:', afterSet?.length);
               }
             }
             if (!isComposerSynced(afterSet, finalSendText, original) && !isLexicalFlow) {
@@ -4226,7 +4269,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               });
               await sleep(220);
               afterSet = getComposerText(activeComposer);
-              console.log('[Ferdium Translator] After third set, composer text:', afterSet?.substring(0, 100));
+              console.log('[Ferdium Translator] After third set, composer text:', afterSet?.length);
             }
             if (!isComposerSynced(afterSet, finalSendText, original)) {
               const fallbackOk = forceSyncViaFooterTextarea(finalSendText, original, operationId);
@@ -4236,7 +4279,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                 afterSet = getComposerText(fallbackComposer);
                 console.log(
                   '[Ferdium Translator] After textarea fallback, composer text:',
-                  afterSet?.substring(0, 100),
+                  afterSet?.length,
                 );
               }
             }
@@ -4246,6 +4289,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             console.log('[Ferdium Translator] Triggering native send', { operationId });
             state.bypassSendUntil = Date.now() + 2400;
             const outgoingRowCountBeforeSend = getOutgoingMessageRows().length;
+            nativeSendAttempted = true;
             await triggerNativeSend(preferClick, finalSendText, original, operationId);
             if (!isGoogleChatProfile()) {
               queueLocalPreviewDecoration(
@@ -4257,6 +4301,14 @@ export default class MessageTranslatorStore extends FeatureStore {
             }
             console.log('[Ferdium Translator] ===== Translation and send completed =====', { operationId });
           } catch (error) {
+            if (!nativeSendAttempted) {
+              try {
+                setComposerText(readComposer() || composer, original, {
+                  operationId,
+                  reason: 'restore-draft-after-translation-failure',
+                });
+              } catch (_restoreError) {}
+            }
             console.error('[Ferdium Translator] ===== Translation failed =====', error);
             console.error(
               '[Ferdium Translator] Error details:',
@@ -4273,10 +4325,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             const errorMessage =
               error && error.message ? String(error.message) : 'unknown-error';
             hideStatusImmediately = false;
-            showStatus('Translation failed: ' + errorMessage, true, true);
-            setTimeout(() => {
-              showStatus('', false, false);
-            }, 1800);
+            showStatus('翻译未发送：' + errorMessage, true, true);
             return;
           } finally {
             if (hideStatusImmediately) {
@@ -4359,6 +4408,7 @@ export default class MessageTranslatorStore extends FeatureStore {
 
         const handleComposerKeyDown = event => {
           if (!isActiveInterceptorInstance()) return;
+          if (event.target?.closest?.('[data-ferdium-translation-confirm]')) return;
           if (event.key !== 'Enter' || event.shiftKey) return;
           if (event.isComposing || event.keyCode === 229) return;
           if (!state.settings.sendTranslation) {
@@ -4441,6 +4491,7 @@ export default class MessageTranslatorStore extends FeatureStore {
 
         const handleComposerBeforeInput = event => {
           if (!isActiveInterceptorInstance()) return;
+          if (event.target?.closest?.('[data-ferdium-translation-confirm]')) return;
           if (!state.settings.sendTranslation) return;
           if (Date.now() < state.bypassSendUntil) return;
           if (event.isComposing) return;
@@ -4461,6 +4512,7 @@ export default class MessageTranslatorStore extends FeatureStore {
 
         const handleSendButtonEvent = event => {
           if (!isActiveInterceptorInstance()) return;
+          if (event.target?.closest?.('[data-ferdium-translation-confirm]')) return;
           if (isGoogleChatProfile() && event?.type !== 'click') {
             // Avoid blocking unrelated pointer/mouse interactions in Google Chat.
             return;
@@ -4531,10 +4583,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                 JSON.stringify({
                   event: getEventDebug(event),
                   profile: activeProfile,
-                  composerTextPreview: String(getComposerText(composer) || '').slice(
-                    0,
-                    100,
-                  ),
+                  composerTextLength: String(getComposerText(composer) || '').length,
                 }),
             );
           } catch (_e) {}
@@ -4563,10 +4612,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               '[Ferdium Translator] Intercepting submit event, starting translation: ' +
                 JSON.stringify({
                   profile: activeProfile,
-                  composerTextPreview: String(getComposerText(composer) || '').slice(
-                    0,
-                    100,
-                  ),
+                  composerTextLength: String(getComposerText(composer) || '').length,
                 }),
             );
           } catch (_e) {}
@@ -4724,9 +4770,9 @@ export default class MessageTranslatorStore extends FeatureStore {
               ok: isComposerSynced(after, target, original),
               instanceId,
               operationId,
-              original: original.substring(0, 120),
-              target: target.substring(0, 120),
-              after: String(after || '').substring(0, 120),
+              originalLength: original.length,
+              targetLength: target.length,
+              afterLength: String(after || '').length,
             };
           };
           window.__ferdiumTranslatorDiagnose = () => {
@@ -4879,7 +4925,11 @@ export default class MessageTranslatorStore extends FeatureStore {
     fromLang: string;
     toLang: string;
   }) => {
-    debug('_translateMessage requested', { text, fromLang, toLang });
+    debug('_translateMessage requested', {
+      textLength: text.length,
+      fromLang,
+      toLang,
+    });
   };
 
   @action _setServiceLanguage = ({
@@ -4896,150 +4946,6 @@ export default class MessageTranslatorStore extends FeatureStore {
       settings: {
         myLanguage,
         targetLanguage,
-      },
-    });
-  };
-
-  _normalizeDynamicLanguageCode = (value: unknown): string => {
-    const normalized = String(value || '')
-      .trim()
-      .replaceAll('_', '-')
-      .toLowerCase();
-    if (!normalized) return '';
-    if (normalized === 'auto') return 'auto';
-    if (normalized.startsWith('zh')) return 'zh';
-    return normalized.split('-')[0] || normalized;
-  };
-
-  _toSupportedPeerLanguage = (value: unknown): string => {
-    const normalized = this._normalizeDynamicLanguageCode(value);
-    if (!normalized || normalized === 'auto') return '';
-    const supported = new Set([
-      'zh',
-      'en',
-      'yue',
-      'wyw',
-      'ja',
-      'ko',
-      'fr',
-      'es',
-      'th',
-      'ar',
-      'ru',
-      'pt',
-      'de',
-      'it',
-      'el',
-      'nl',
-      'pl',
-      'bg',
-      'et',
-      'da',
-      'fi',
-      'cs',
-      'ro',
-      'sl',
-      'sv',
-      'hu',
-      'vi',
-      'id',
-      'hi',
-    ]);
-    return supported.has(normalized) ? normalized : '';
-  };
-
-  _inferLanguageFromSampleText = (sample: string): string => {
-    const text = String(sample || '');
-    if (/[\u3040-\u30FF]/.test(text)) return 'ja';
-    if (/[\uAC00-\uD7AF]/.test(text)) return 'ko';
-    if (/[\u0400-\u04FF]/.test(text)) return 'ru';
-    if (/[\u3400-\u9FFF]/.test(text)) return 'zh';
-    return '';
-  };
-
-  @action _handleIncomingLanguageDetected = ({
-    serviceId,
-    detectedLanguage,
-    sample,
-    sampleLength,
-    reason,
-  }: {
-    serviceId: string;
-    detectedLanguage: string;
-    sample?: string;
-    sampleLength?: number;
-    reason?: string;
-  }) => {
-    if (!String(serviceId || '').trim()) return;
-    const sampleText = String(sample || '').trim();
-    const sampleSize = Number(sampleLength ?? sampleText.length);
-    if (sampleSize < 4) return;
-
-    const serviceSettings = this.getServiceSettings(serviceId);
-    if (serviceSettings.receiveTranslation === false) return;
-
-    const inferredLanguage = this._inferLanguageFromSampleText(sampleText);
-    const detectedPeerLanguage =
-      this._toSupportedPeerLanguage(detectedLanguage);
-    let shouldPreferInferredLanguage = false;
-    if (
-      inferredLanguage &&
-      detectedPeerLanguage &&
-      inferredLanguage !== detectedPeerLanguage &&
-      sampleSize <= 24
-    ) {
-      shouldPreferInferredLanguage = true;
-    }
-    if (
-      shouldPreferInferredLanguage &&
-      inferredLanguage === 'zh' &&
-      (detectedPeerLanguage === 'yue' || detectedPeerLanguage === 'wyw')
-    ) {
-      shouldPreferInferredLanguage = false;
-    }
-    let nextPeerLanguage = detectedPeerLanguage || inferredLanguage;
-    if (shouldPreferInferredLanguage) {
-      nextPeerLanguage = inferredLanguage;
-    }
-    if (!nextPeerLanguage) return;
-
-    const myLanguage = this._toSupportedPeerLanguage(
-      serviceSettings.myLanguage,
-    );
-    if (myLanguage && nextPeerLanguage === myLanguage) return;
-
-    const currentPeerLanguage = this._toSupportedPeerLanguage(
-      serviceSettings.targetLanguage,
-    );
-    if (currentPeerLanguage === nextPeerLanguage) return;
-
-    const previousApplied = this._dynamicPeerLanguageLastApplied.get(serviceId);
-    if (
-      previousApplied &&
-      previousApplied.language === nextPeerLanguage &&
-      Date.now() - previousApplied.at < 500
-    ) {
-      return;
-    }
-
-    debug('Applying dynamic peer language from incoming message', {
-      serviceId,
-      reason,
-      samplePreview: sampleText.slice(0, 60),
-      detectedLanguage,
-      nextPeerLanguage,
-      previousPeerLanguage: serviceSettings.targetLanguage,
-      myLanguage: serviceSettings.myLanguage,
-    });
-
-    this._dynamicPeerLanguageLastApplied.set(serviceId, {
-      language: nextPeerLanguage,
-      at: Date.now(),
-    });
-    this._updateServiceSettings({
-      serviceId,
-      settings: {
-        targetLanguage: nextPeerLanguage,
       },
     });
   };
@@ -5073,20 +4979,6 @@ export default class MessageTranslatorStore extends FeatureStore {
       message.data?.serviceId
     ) {
       this._pushSettingsToService(message.data.serviceId);
-    }
-
-    if (
-      message.action === 'translator:incoming-language-detected' &&
-      message.data?.serviceId &&
-      message.data?.detectedLanguage
-    ) {
-      this._handleIncomingLanguageDetected({
-        serviceId: message.data.serviceId,
-        detectedLanguage: message.data.detectedLanguage,
-        sample: message.data.sample,
-        sampleLength: message.data.sampleLength,
-        reason: message.data.reason,
-      });
     }
   };
 

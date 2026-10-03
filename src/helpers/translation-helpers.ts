@@ -5,6 +5,11 @@ import {
 } from '../config';
 import { translateWithBaidu } from './baidu-translate';
 import { getTranslationCache } from './translation-cache';
+import {
+  translateWithAliyun,
+  translateWithGoogleCloud,
+  translateWithYoudao,
+} from './translation-provider-apis';
 
 const debug = require('../preload-safe-debug')('Ferdium:Translation');
 
@@ -12,8 +17,7 @@ const MYMEMORY_TRANSLATE_API = 'https://api.mymemory.translated.net/get';
 const GOOGLE_TRANSLATE_API =
   'https://translate.googleapis.com/translate_a/single';
 const TRANSLATOR_ENGINE_BAIDU = 'Baidu';
-const BUILTIN_BAIDU_APP_ID = '20240726002108918';
-const BUILTIN_BAIDU_SECRET_KEY = 'vowgbu1GNKLkUSzX3Cbq';
+const TRANSLATOR_ENGINE_MYMEMORY = 'MyMemory';
 
 interface BaiduConfig {
   appId: string;
@@ -24,8 +28,10 @@ export interface TranslateOptions {
   fromLanguage?: string;
   baiduAppId?: string;
   baiduSecretKey?: string;
+  providerCredentials?: Record<string, string> | null;
   cacheFilePath?: string;
   cacheMaxEntries?: number;
+  allowFallback?: boolean;
 }
 
 const LANGUAGE_ALIAS_MAP: Record<string, string> = {
@@ -113,14 +119,12 @@ const resolveBaiduConfig = (options?: TranslateOptions): BaiduConfig | null => {
     options?.baiduAppId ||
       process.env.BAIDU_TRANSLATE_APP_ID ||
       process.env.BAIDU_APP_ID ||
-      BUILTIN_BAIDU_APP_ID ||
       '',
   ).trim();
   const secretKey = String(
     options?.baiduSecretKey ||
       process.env.BAIDU_TRANSLATE_SECRET_KEY ||
       process.env.BAIDU_SECRET_KEY ||
-      BUILTIN_BAIDU_SECRET_KEY ||
       '',
   ).trim();
 
@@ -328,7 +332,6 @@ export async function translateTo(
 ): Promise<{ text: string; error: boolean }> {
   debug('translateTo called:', {
     textLength: text?.length,
-    textPreview: text?.slice(0, 50),
     translateToLanguage,
     translatorEngine,
     fromLanguage: options?.fromLanguage,
@@ -383,6 +386,7 @@ export async function translateTo(
 
   const attempts: { name: string; fn: () => Promise<string> }[] = [];
 
+  // eslint-disable-next-line unicorn/prefer-switch
   if (engine === TRANSLATOR_ENGINE_BAIDU) {
     debug('Using Baidu translator engine');
     const baiduConfig = resolveBaiduConfig(options);
@@ -411,11 +415,36 @@ export async function translateTo(
         });
       },
     });
+  } else if (engine === 'Youdao' || engine === 'Aliyun') {
+    const credentials = options?.providerCredentials;
+    if (!credentials) {
+      return {
+        text: `${errorText} Missing ${engine} credentials.`,
+        error: true,
+      };
+    }
+    attempts.push({
+      name: engine,
+      fn: () =>
+        engine === 'Youdao'
+          ? translateWithYoudao(text, fromLang, toLang, {
+              appKey: credentials.appKey,
+              appSecret: credentials.appSecret,
+            })
+          : translateWithAliyun(text, fromLang, toLang, {
+              accessKeyId: credentials.accessKeyId,
+              accessKeySecret: credentials.accessKeySecret,
+            }),
+    });
   } else if (engine === TRANSLATOR_ENGINE_GOOGLE) {
+    const googleApiKey = options?.providerCredentials?.apiKey;
     attempts.push(
       {
         name: 'Google',
-        fn: () => translateViaGoogle(text, fromLang, toLang),
+        fn: () =>
+          googleApiKey
+            ? translateWithGoogleCloud(text, fromLang, toLang, googleApiKey)
+            : translateViaGoogle(text, fromLang, toLang),
       },
       {
         name: 'LibreTranslate',
@@ -427,6 +456,12 @@ export async function translateTo(
       },
     );
   } else {
+    if (engine === TRANSLATOR_ENGINE_MYMEMORY) {
+      attempts.push({
+        name: 'MyMemory',
+        fn: () => translateViaMyMemory(text, fromLang, toLang),
+      });
+    }
     attempts.push({
       name: 'LibreTranslate',
       fn: () => translateViaLibre(text, fromLang, toLang),
@@ -439,14 +474,18 @@ export async function translateTo(
       });
     }
 
-    attempts.push({
-      name: 'MyMemory',
-      fn: () => translateViaMyMemory(text, fromLang, toLang),
-    });
+    if (engine !== TRANSLATOR_ENGINE_MYMEMORY) {
+      attempts.push({
+        name: 'MyMemory',
+        fn: () => translateViaMyMemory(text, fromLang, toLang),
+      });
+    }
   }
 
   let lastError: string | null = null;
-  for (const attempt of attempts) {
+  const selectedAttempts =
+    options?.allowFallback === false ? attempts.slice(0, 1) : attempts;
+  for (const attempt of selectedAttempts) {
     try {
       // eslint-disable-next-line no-await-in-loop
       const translatedText = await attempt.fn();

@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { removeSync } from 'fs-extra';
@@ -51,6 +51,26 @@ describe('translation-cache', () => {
     });
 
     expect(hit).toBe('bonjour');
+  });
+
+  it('clears cached conversation text from memory and disk', () => {
+    const cacheFilePath = join(tempDir, 'translation-cache.json');
+    const cache = getTranslationCache(cacheFilePath, 100);
+    const request = {
+      sourceText: 'private conversation',
+      fromLanguage: 'en',
+      toLanguage: 'zh',
+      engine: 'Google',
+    };
+
+    cache?.save(request, '私人对话');
+    expect(existsSync(cacheFilePath)).toBe(true);
+    const privatePermissions = statSync(cacheFilePath).mode % 0o100 === 0;
+    expect(process.platform === 'win32' || privatePermissions).toBe(true);
+
+    cache?.clear();
+    expect(cache?.lookup(request)).toBeNull();
+    expect(existsSync(cacheFilePath)).toBe(false);
   });
 
   it('includes source/target language and engine in cache key', () => {

@@ -1,5 +1,4 @@
 import { systemPreferences } from '@electron/remote';
-import { mdiOpenInNew } from '@mdi/js';
 import { ipcRenderer } from 'electron';
 import { noop } from 'lodash';
 import { observer } from 'mobx-react';
@@ -14,7 +13,6 @@ import tinycolor from 'tinycolor2';
 import {
   DEFAULT_ACCENT_COLOR,
   DEFAULT_APP_SETTINGS,
-  FERDIUM_TRANSLATION,
   SPLIT_COLUMNS_MAX,
   SPLIT_COLUMNS_MIN,
 } from '../../../config';
@@ -39,10 +37,10 @@ import Slider from '../../ui/Slider';
 import Button from '../../ui/button';
 import ColorPickerInput from '../../ui/colorPickerInput';
 import { H1, H2, H3 } from '../../ui/headline';
-import Icon from '../../ui/icon';
 import Input from '../../ui/input/index';
 import Toggle from '../../ui/toggle';
 import SandboxServiceTabs from '../SandboxServiceTabs';
+import TranslationProviderSettings from './TranslationProviderSettings';
 
 const debug = require('../../../preload-safe-debug')(
   'Ferdium:EditSettingsForm',
@@ -187,9 +185,13 @@ const messages = defineMessages({
     id: 'settings.app.headlineAdvanced',
     defaultMessage: 'Advanced',
   },
-  translationHelp: {
-    id: 'settings.app.translationHelp',
-    defaultMessage: 'Help us to translate FreeTrans into your language.',
+  languageInterface: {
+    id: 'settings.language.interface',
+    defaultMessage: '界面与拼写',
+  },
+  languageConversation: {
+    id: 'settings.language.conversation',
+    defaultMessage: '聊天翻译',
   },
   spellCheckerLanguageInfo: {
     id: 'settings.app.spellCheckerLanguageInfo',
@@ -927,51 +929,44 @@ class EditSettingsForm extends Component<IProps, IState> {
 
             {/* Language */}
             {activeSettingsSection === 'language' && (
-              <div>
+              <div className="settings-language">
                 <H2 className="settings__section_header">
                   {intl.formatMessage(messages.sectionLanguage)}
                 </H2>
 
-                <Select field={form.$('locale')} showLabel={false} />
-
-                <Hr />
-
-                <Toggle {...form.$('enableSpellchecking').bind()} />
-                {!isMac && form.$('enableSpellchecking').value && (
-                  <Select field={form.$('spellcheckerLanguage')} />
-                )}
-                {isMac && form.$('enableSpellchecking').value && (
-                  <p className="settings__help">
-                    {intl.formatMessage(messages.spellCheckerLanguageInfo)}
+                <section className="settings-language__section">
+                  <h3 className="settings-language__heading">
+                    {intl.formatMessage(messages.languageInterface)}
+                  </h3>
+                  <Select field={form.$('locale')} showLabel={false} />
+                  <Toggle {...form.$('enableSpellchecking').bind()} />
+                  {!isMac && form.$('enableSpellchecking').value && (
+                    <Select field={form.$('spellcheckerLanguage')} />
+                  )}
+                  {isMac && form.$('enableSpellchecking').value && (
+                    <p className="settings__help">
+                      {intl.formatMessage(messages.spellCheckerLanguageInfo)}
+                    </p>
+                  )}
+                  <p className="settings__help settings-language__restart-note">
+                    {intl.formatMessage(messages.appRestartRequired)}
                   </p>
-                )}
+                </section>
 
-                <p className="settings__help">
-                  {intl.formatMessage(messages.appRestartRequired)}
-                </p>
+                <section className="settings-language__section">
+                  <h3 className="settings-language__heading">
+                    {intl.formatMessage(messages.languageConversation)}
+                  </h3>
+                  <Toggle {...form.$('enableTranslator').bind()} />
+                  {form.$('enableTranslator').value && (
+                    <Select field={form.$('translatorEngine')} />
+                  )}
+                  {form.$('enableTranslator').value && (
+                    <Select field={form.$('translatorLanguage')} />
+                  )}
+                </section>
 
-                <Hr />
-
-                <Toggle {...form.$('enableTranslator').bind()} />
-
-                {form.$('enableTranslator').value && (
-                  <Select field={form.$('translatorEngine')} />
-                )}
-                {form.$('enableTranslator').value && (
-                  <Select field={form.$('translatorLanguage')} />
-                )}
-
-                <Hr />
-
-                <a
-                  href={FERDIUM_TRANSLATION}
-                  target="_blank"
-                  className="link"
-                  rel="noreferrer"
-                >
-                  {intl.formatMessage(messages.translationHelp)}{' '}
-                  <Icon icon={mdiOpenInNew} />
-                </a>
+                <TranslationProviderSettings />
               </div>
             )}
 
