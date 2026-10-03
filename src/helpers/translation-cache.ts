@@ -13,8 +13,10 @@ const debug = require('../preload-safe-debug')('Ferdium:TranslationCache');
 
 const CACHE_FILE_VERSION = 1;
 const DEFAULT_MAX_ENTRIES = 5000;
+export const TRANSLATION_CACHE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface TranslationCacheKeyInput {
+  serviceId?: string;
   sourceText: string;
   fromLanguage: string;
   toLanguage: string;
@@ -24,6 +26,7 @@ interface TranslationCacheKeyInput {
 interface TranslationCacheEntry extends TranslationCacheKeyInput {
   key: string;
   translatedText: string;
+  usedEngine?: string;
   updatedAt: number;
   createdAt: number;
 }
@@ -34,6 +37,7 @@ interface TranslationCacheFilePayload {
 }
 
 interface ReverseLookupInput {
+  serviceId?: string;
   translatedText: string;
   fromLanguage?: string;
   toLanguage?: string;
@@ -69,12 +73,14 @@ const languageMatches = (left: string, right: string) => {
 };
 
 const buildCacheKey = ({
+  serviceId,
   sourceText,
   fromLanguage,
   toLanguage,
   engine,
 }: TranslationCacheKeyInput) => {
   const hashSource = JSON.stringify({
+    ...(serviceId ? { serviceId: String(serviceId).trim() } : {}),
     sourceText: normalizeText(sourceText),
     fromLanguage: normalizeLanguage(fromLanguage),
     toLanguage: normalizeLanguage(toLanguage),
@@ -100,6 +106,14 @@ export class TranslationCache {
   }
 
   lookup(input: TranslationCacheKeyInput): string | null {
+    return this.lookupResult(input)?.text || null;
+  }
+
+  lookupResult(input: TranslationCacheKeyInput): {
+    text: string;
+    usedEngine: string;
+  } | null {
+    if (this.pruneIfNeeded()) this.persistToDisk();
     const key = buildCacheKey(input);
     const hit = this.entryByKey.get(key);
     if (!hit) {
@@ -107,10 +121,14 @@ export class TranslationCache {
     }
 
     hit.updatedAt = Date.now();
-    return String(hit.translatedText || '');
+    return {
+      text: String(hit.translatedText || ''),
+      usedEngine: hit.usedEngine || hit.engine,
+    };
   }
 
   lookupOriginalByTranslatedText(input: ReverseLookupInput): string | null {
+    if (this.pruneIfNeeded()) this.persistToDisk();
     const translatedText = normalizeText(input.translatedText);
     if (!translatedText) return null;
 
@@ -125,13 +143,15 @@ export class TranslationCache {
     let bestEntry: TranslationCacheEntry | null = null;
     let bestScore = -1;
     for (const entry of candidates) {
+      const serviceMatches =
+        String(entry.serviceId || '') === String(input.serviceId || '');
       const translatedMatches =
         normalizeText(entry.translatedText) === translatedText;
       const toLanguageMatches =
         !normalizedToLanguage ||
         languageMatches(entry.toLanguage, normalizedToLanguage);
 
-      if (translatedMatches && toLanguageMatches) {
+      if (serviceMatches && translatedMatches && toLanguageMatches) {
         let score = 0;
         if (normalizedToLanguage) {
           score += 4;
@@ -165,11 +185,16 @@ export class TranslationCache {
     return normalizeText(bestEntry.sourceText);
   }
 
-  save(input: TranslationCacheKeyInput, translatedText: string) {
+  save(
+    input: TranslationCacheKeyInput,
+    translatedText: string,
+    usedEngine?: string,
+  ) {
     const normalizedTranslatedText = normalizeText(translatedText);
     if (!normalizedTranslatedText) return;
 
     const normalizedInput: TranslationCacheKeyInput = {
+      serviceId: String(input.serviceId || '').trim(),
       sourceText: normalizeText(input.sourceText),
       fromLanguage: normalizeLanguage(input.fromLanguage),
       toLanguage: normalizeLanguage(input.toLanguage),
@@ -182,11 +207,13 @@ export class TranslationCache {
     const existing = this.entryByKey.get(key);
     this.entryByKey.set(key, {
       key,
+      serviceId: normalizedInput.serviceId,
       sourceText: normalizedInput.sourceText,
       fromLanguage: normalizedInput.fromLanguage,
       toLanguage: normalizedInput.toLanguage,
       engine: normalizedInput.engine,
       translatedText: normalizedTranslatedText,
+      usedEngine: usedEngine || normalizedInput.engine,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
     });
@@ -198,6 +225,18 @@ export class TranslationCache {
   clear() {
     this.entryByKey.clear();
     if (this.filePath) removeSync(this.filePath);
+  }
+
+  clearService(serviceId: string) {
+    const normalizedServiceId = String(serviceId || '').trim();
+    if (!normalizedServiceId) return;
+    for (const [key, entry] of this.entryByKey) {
+      // Older cache entries have no service ID, so their owner cannot be
+      // determined safely when the user requests a service-level clear.
+      if (!entry.serviceId || entry.serviceId === normalizedServiceId)
+        this.entryByKey.delete(key);
+    }
+    this.persistToDisk();
   }
 
   private loadFromDisk() {
@@ -240,6 +279,7 @@ export class TranslationCache {
       }
 
       this.pruneIfNeeded();
+      this.persistToDisk();
     } catch (error) {
       debug('Failed to load translation cache from disk', {
         filePath: this.filePath,
@@ -272,7 +312,14 @@ export class TranslationCache {
   }
 
   private pruneIfNeeded() {
-    if (this.entryByKey.size <= this.maxEntries) return;
+    const initialSize = this.entryByKey.size;
+    const expiresBefore = Date.now() - TRANSLATION_CACHE_RETENTION_MS;
+    for (const [key, entry] of this.entryByKey) {
+      if (Number(entry.createdAt || 0) < expiresBefore)
+        this.entryByKey.delete(key);
+    }
+    if (this.entryByKey.size <= this.maxEntries)
+      return this.entryByKey.size !== initialSize;
 
     const sortedByOldest = [...this.entryByKey.values()].sort(
       (left, right) => left.updatedAt - right.updatedAt,
@@ -284,6 +331,7 @@ export class TranslationCache {
         this.entryByKey.delete(stale.key);
       }
     }
+    return this.entryByKey.size !== initialSize;
   }
 }
 

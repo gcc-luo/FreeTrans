@@ -2,7 +2,10 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { removeSync } from 'fs-extra';
-import { clearTranslationCacheInstancesForTests } from '../../src/helpers/translation-cache';
+import {
+  clearTranslationCacheInstancesForTests,
+  getTranslationCache,
+} from '../../src/helpers/translation-cache';
 
 jest.mock('../../src/helpers/baidu-translate', () => ({
   translateWithBaidu: jest.fn(),
@@ -125,7 +128,11 @@ describe('translation-helpers cache behavior', () => {
         fromLanguage: 'en',
         allowFallback: false,
       });
-      expect(result).toEqual({ text: '早上好', error: false });
+      expect(result).toEqual({
+        text: '早上好',
+        error: false,
+        usedEngine: 'MyMemory',
+      });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(String(fetchMock.mock.calls[0][0])).toContain(
         'mymemory.translated.net',
@@ -148,8 +155,16 @@ describe('translation-helpers cache behavior', () => {
       providerCredentials: { accessKeyId: 'id', accessKeySecret: 'secret' },
       allowFallback: false,
     });
-    expect(youdao).toEqual({ text: '你好', error: false });
-    expect(aliyun).toEqual({ text: '早上好', error: false });
+    expect(youdao).toEqual({
+      text: '你好',
+      error: false,
+      usedEngine: 'Youdao',
+    });
+    expect(aliyun).toEqual({
+      text: '早上好',
+      error: false,
+      usedEngine: 'Aliyun',
+    });
     expect(providerApis.translateWithYoudao).toHaveBeenCalledTimes(1);
     expect(providerApis.translateWithAliyun).toHaveBeenCalledTimes(1);
   });
@@ -161,7 +176,11 @@ describe('translation-helpers cache behavior', () => {
       providerCredentials: { apiKey: 'google-key' },
       allowFallback: false,
     });
-    expect(result).toEqual({ text: '你好', error: false });
+    expect(result).toEqual({
+      text: '你好',
+      error: false,
+      usedEngine: 'Google',
+    });
     expect(providerApis.translateWithGoogleCloud).toHaveBeenCalledWith(
       'Hello',
       'en',
@@ -222,5 +241,67 @@ describe('translation-helpers cache behavior', () => {
     expect(second.error).toBe(false);
     expect(second.text).toBe('bonjour');
     expect(translateWithBaidu).toHaveBeenCalledTimes(0);
+  });
+
+  it('does not write an in-flight result after caching is disabled', async () => {
+    let cacheEnabled = true;
+    translateWithBaidu.mockImplementation(async () => {
+      cacheEnabled = false;
+      return { text: 'bonjour', error: false };
+    });
+    const result = await translateTo('你好', 'fr', 'Baidu', {
+      fromLanguage: 'zh',
+      baiduAppId: 'id',
+      baiduSecretKey: 'secret',
+      cacheFilePath,
+      serviceId: 'whatsapp',
+      shouldCache: () => cacheEnabled,
+    });
+    expect(result.error).toBe(false);
+    clearTranslationCacheInstancesForTests();
+    expect(
+      getTranslationCache(cacheFilePath)?.lookup({
+        serviceId: 'whatsapp',
+        sourceText: '你好',
+        fromLanguage: 'zh',
+        toLanguage: 'fr',
+        engine: 'Baidu',
+      }),
+    ).toBeNull();
+  });
+
+  it('reports the actual fallback provider, including a later cache hit', async () => {
+    const previousFetch = global.fetch;
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ translatedText: '你好' }),
+      });
+    global.fetch = fetchMock;
+    try {
+      const options = {
+        fromLanguage: 'en',
+        cacheFilePath,
+        serviceId: 'googlechat',
+      };
+      const first = await translateTo('Hello', 'zh', 'Google', options);
+      const second = await translateTo('Hello', 'zh', 'Google', options);
+      expect(first).toEqual({
+        text: '你好',
+        error: false,
+        usedEngine: 'LibreTranslate',
+      });
+      expect(second).toEqual({
+        text: '你好',
+        error: false,
+        usedEngine: 'LibreTranslate',
+        fromCache: true,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      global.fetch = previousFetch;
+    }
   });
 });

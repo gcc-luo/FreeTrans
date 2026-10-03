@@ -277,6 +277,13 @@ body.win32:not(.isFullScreen) .app .app__content {
   font-size: 12px;
 }
 
+.translator-engine-section__hint {
+  margin: 0;
+  color: var(--translator-select-color);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .translator-engine-section__notice {
   margin: 0;
   padding: 8px 10px;
@@ -357,6 +364,26 @@ body.win32:not(.isFullScreen) .app .app__content {
   padding: 5px 8px;
   cursor: pointer;
   font-size: 11px;
+}
+
+.translator-privacy > button + button {
+  margin-left: 6px;
+}
+
+.translator-privacy .translator-toggle-row {
+  grid-template-columns: 1fr auto;
+  margin: 10px 0;
+}
+
+.translator-privacy .translator-switch {
+  border: 0;
+  border-radius: 999px;
+  background: var(--translator-switch-bg);
+  padding: 0;
+}
+
+.translator-privacy .translator-switch.is-on {
+  background: var(--translator-switch-on-bg);
 }
 
 .translator-toggle-row {

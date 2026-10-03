@@ -25,12 +25,14 @@ interface BaiduConfig {
 }
 
 export interface TranslateOptions {
+  serviceId?: string;
   fromLanguage?: string;
   baiduAppId?: string;
   baiduSecretKey?: string;
   providerCredentials?: Record<string, string> | null;
   cacheFilePath?: string;
   cacheMaxEntries?: number;
+  shouldCache?: () => boolean;
   allowFallback?: boolean;
 }
 
@@ -329,7 +331,12 @@ export async function translateTo(
   translateToLanguage: string,
   translatorEngine: string,
   options?: TranslateOptions,
-): Promise<{ text: string; error: boolean }> {
+): Promise<{
+  text: string;
+  error: boolean;
+  usedEngine?: string;
+  fromCache?: boolean;
+}> {
   debug('translateTo called:', {
     textLength: text?.length,
     translateToLanguage,
@@ -358,6 +365,7 @@ export async function translateTo(
     ? getTranslationCache(options.cacheFilePath, options.cacheMaxEntries)
     : null;
   const cacheKeyInput = {
+    serviceId: options?.serviceId,
     sourceText: normalizedSourceText,
     fromLanguage: fromLang,
     toLanguage: toLang,
@@ -371,16 +379,25 @@ export async function translateTo(
     hasCache: !!translationCache,
   });
 
-  if (translationCache && normalizedSourceText) {
-    const cachedText = translationCache.lookup(cacheKeyInput);
-    if (cachedText !== null) {
+  if (
+    translationCache &&
+    normalizedSourceText &&
+    options?.shouldCache?.() !== false
+  ) {
+    const cachedResult = translationCache.lookupResult(cacheKeyInput);
+    if (cachedResult !== null) {
       debug('translateTo cache hit:', {
         sourceTextLength: normalizedSourceText.length,
         fromLang,
         toLang,
         engine,
       });
-      return { text: cachedText, error: false };
+      return {
+        text: cachedResult.text,
+        error: false,
+        usedEngine: cachedResult.usedEngine,
+        fromCache: true,
+      };
     }
   }
 
@@ -489,10 +506,14 @@ export async function translateTo(
     try {
       // eslint-disable-next-line no-await-in-loop
       const translatedText = await attempt.fn();
-      if (translationCache && normalizedSourceText) {
-        translationCache.save(cacheKeyInput, translatedText);
+      if (
+        translationCache &&
+        normalizedSourceText &&
+        options?.shouldCache?.() !== false
+      ) {
+        translationCache.save(cacheKeyInput, translatedText, attempt.name);
       }
-      return { text: translatedText, error: false };
+      return { text: translatedText, error: false, usedEngine: attempt.name };
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
       debug(`${attempt.name} translation failed:`, error);

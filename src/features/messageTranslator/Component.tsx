@@ -56,7 +56,52 @@ const messages = defineMessages({
   privacyNotice: {
     id: 'translator.panel.privacyNotice',
     defaultMessage:
-      '翻译内容会发送至第三方服务，失败时可能切换服务，并缓存在本机。',
+      '消息会发送至所选翻译服务；失败时可能切换至备用服务。本机缓存最多保留 7 天，可随时关闭或清除。',
+  },
+  cacheEnabled: {
+    id: 'translator.panel.cacheEnabled',
+    defaultMessage: '保存本机翻译缓存',
+  },
+  cacheSettingFailed: {
+    id: 'translator.panel.cacheSettingFailed',
+    defaultMessage: '缓存设置未保存，请重试。',
+  },
+  cacheDisabledHint: {
+    id: 'translator.panel.cacheDisabledHint',
+    defaultMessage:
+      '关闭后不再保存新消息；重启后可能无法恢复历史消息的原文预览。',
+  },
+  clearServiceCache: {
+    id: 'translator.panel.clearServiceCache',
+    defaultMessage: '清除当前服务缓存',
+  },
+  clearAllCache: {
+    id: 'translator.panel.clearAllCache',
+    defaultMessage: '清除全部缓存',
+  },
+  actualEngine: {
+    id: 'translator.panel.actualEngine',
+    defaultMessage: '本次实际使用：{engine}',
+  },
+  cachedEngine: {
+    id: 'translator.panel.cachedEngine',
+    defaultMessage: '本次使用缓存译文，来源：{engine}',
+  },
+  fallbackEngine: {
+    id: 'translator.panel.fallbackEngine',
+    defaultMessage: '首选引擎失败，已切换至 {engine}',
+  },
+  missingCredentials: {
+    id: 'translator.panel.missingCredentials',
+    defaultMessage: '尚未配置引擎凭据，请前往“设置 → 语言”。',
+  },
+  chooseMyLanguage: {
+    id: 'translator.panel.chooseMyLanguage',
+    defaultMessage: '接收翻译需要选择具体的“我的语言”。',
+  },
+  checkTimedOut: {
+    id: 'translator.panel.checkTimedOut',
+    defaultMessage: '引擎检测超时，请检查网络后重试。',
   },
   privacyTitle: {
     id: 'translator.panel.privacyTitle',
@@ -102,16 +147,32 @@ const messages = defineMessages({
     id: 'translator.panel.checkAgain',
     defaultMessage: '重新检测',
   },
+  checkScope: {
+    id: 'translator.panel.checkScope',
+    defaultMessage: '按当前收发语言检测；短文本通过不保证每条消息都能翻译。',
+  },
 });
 
 interface EngineStatus {
   engine: string;
   available: boolean;
+  reason?:
+    | 'missing-credentials'
+    | 'timeout'
+    | 'translation-failed'
+    | 'invalid-target-language';
 }
 
 interface PanelState {
   cacheStatus: string;
   engineStatuses: EngineStatus[] | null;
+  cacheEnabled: boolean | null;
+  lastEngineUsed: {
+    serviceId: string;
+    requestedEngine: string;
+    usedEngine: string;
+    fromCache?: boolean;
+  } | null;
 }
 
 interface Props extends WrappedComponentProps {
@@ -125,15 +186,30 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
 
   private engineCheckSequence = 0;
 
+  private checkedConfigurationKey = '';
+
   constructor(props: Props) {
     super(props);
-    this.state = { cacheStatus: '', engineStatuses: null };
+    this.state = {
+      cacheStatus: '',
+      engineStatuses: null,
+      cacheEnabled: null,
+      lastEngineUsed: null,
+    };
   }
 
   componentDidMount() {
     this.mounted = true;
+    this.checkedConfigurationKey = this.getHealthConfigurationKey();
     this.checkEngines();
+    ipcRenderer
+      .invoke('translator:get-cache-settings')
+      .then(({ enabled }) => {
+        if (this.mounted) this.setState({ cacheEnabled: enabled });
+      })
+      .catch(() => {});
     ipcRenderer.on('translator:engines-changed', this.handleEnginesChanged);
+    ipcRenderer.on('translator:engine-used', this.handleEngineUsed);
     window.addEventListener('focus', this.handleWindowFocus);
   }
 
@@ -143,8 +219,41 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
       'translator:engines-changed',
       this.handleEnginesChanged,
     );
+    ipcRenderer.removeListener('translator:engine-used', this.handleEngineUsed);
     window.removeEventListener('focus', this.handleWindowFocus);
   }
+
+  componentDidUpdate() {
+    const key = this.getHealthConfigurationKey();
+    if (key !== this.checkedConfigurationKey) {
+      this.checkedConfigurationKey = key;
+      this.checkEngines();
+    }
+  }
+
+  getHealthConfiguration() {
+    const service = this.props.stores?.services.active;
+    const settings = service
+      ? this.props.stores?.messageTranslator.getServiceSettings(service.id)
+      : null;
+    return {
+      myLanguage: settings?.myLanguage || 'zh',
+      targetLanguage: settings?.targetLanguage || 'en',
+      sendTranslation: settings?.sendTranslation !== false,
+      receiveTranslation: settings?.receiveTranslation !== false,
+    };
+  }
+
+  getHealthConfigurationKey() {
+    return JSON.stringify(this.getHealthConfiguration());
+  }
+
+  handleEngineUsed = (
+    _event: unknown,
+    result: PanelState['lastEngineUsed'],
+  ) => {
+    if (this.mounted) this.setState({ lastEngineUsed: result });
+  };
 
   handleEnginesChanged = () => this.checkEngines(true);
 
@@ -158,6 +267,7 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
       const engineStatuses = (await ipcRenderer.invoke(
         'translator:get-engine-status',
         force,
+        this.getHealthConfiguration(),
       )) as EngineStatus[];
       if (this.mounted && sequence === this.engineCheckSequence)
         this.setState({ engineStatuses });
@@ -167,15 +277,26 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
     }
   };
 
-  clearTranslationCache = async () => {
+  clearTranslationCache = async (serviceId?: string) => {
     try {
-      await ipcRenderer.invoke('translator:clear-cache');
+      await ipcRenderer.invoke('translator:clear-cache', serviceId);
       this.setState({
         cacheStatus: this.props.intl.formatMessage(messages.cacheCleared),
       });
     } catch {
       this.setState({
         cacheStatus: this.props.intl.formatMessage(messages.cacheClearFailed),
+      });
+    }
+  };
+
+  setCacheEnabled = async (enabled: boolean) => {
+    try {
+      await ipcRenderer.invoke('translator:set-cache-enabled', enabled);
+      this.setState({ cacheEnabled: enabled, cacheStatus: '' });
+    } catch {
+      this.setState({
+        cacheStatus: this.props.intl.formatMessage(messages.cacheSettingFailed),
       });
     }
   };
@@ -190,15 +311,20 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
   renderSwitch({
     checked,
     onChange,
+    label,
   }: {
     checked: boolean;
     onChange: (nextValue: boolean) => void;
+    label: string;
   }) {
     return (
       <button
         type="button"
         className={`translator-switch ${checked ? 'is-on' : ''}`}
         onClick={() => onChange(!checked)}
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
       >
         <span className="translator-switch__thumb" />
       </button>
@@ -222,6 +348,9 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
       .map(status => status.engine);
     const selectedEngineAvailable = availableEngines.includes(
       serviceSettings.translatorEngine,
+    );
+    const selectedEngineStatus = this.state.engineStatuses?.find(
+      status => status.engine === serviceSettings.translatorEngine,
     );
     const allMyLanguageOptions = getMyLanguageOptions('');
     const allTargetLanguageOptions = getTargetLanguageOptions('');
@@ -303,14 +432,23 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
                   </option>
                 ))}
               </select>
+              <p className="translator-engine-section__hint">
+                {intl.formatMessage(messages.checkScope)}
+              </p>
               {this.state.engineStatuses && !selectedEngineAvailable && (
                 <p className="translator-engine-section__notice" role="status">
                   {intl.formatMessage(
-                    availableEngines.length === 0
-                      ? messages.noEnginesHelp
-                      : serviceSettings.translatorEngine === 'Baidu'
-                        ? messages.baiduUnavailable
-                        : messages.engineUnavailable,
+                    selectedEngineStatus?.reason === 'invalid-target-language'
+                      ? messages.chooseMyLanguage
+                      : selectedEngineStatus?.reason === 'missing-credentials'
+                        ? messages.missingCredentials
+                        : selectedEngineStatus?.reason === 'timeout'
+                          ? messages.checkTimedOut
+                          : availableEngines.length === 0
+                            ? messages.noEnginesHelp
+                            : serviceSettings.translatorEngine === 'Baidu'
+                              ? messages.baiduUnavailable
+                              : messages.engineUnavailable,
                   )}
                 </p>
               )}
@@ -378,6 +516,7 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
               <span>{intl.formatMessage(messages.sendTranslation)}</span>
               {this.renderSwitch({
                 checked: Boolean(serviceSettings.sendTranslation),
+                label: intl.formatMessage(messages.sendTranslation),
                 onChange: nextValue =>
                   this.updateSettings(activeService.id, {
                     sendTranslation: nextValue,
@@ -389,6 +528,7 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
               <span>{intl.formatMessage(messages.receiveTranslation)}</span>
               {this.renderSwitch({
                 checked: Boolean(serviceSettings.receiveTranslation),
+                label: intl.formatMessage(messages.receiveTranslation),
                 onChange: nextValue =>
                   this.updateSettings(activeService.id, {
                     receiveTranslation: nextValue,
@@ -398,13 +538,48 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
             <details className="translator-privacy">
               <summary>{intl.formatMessage(messages.privacyTitle)}</summary>
               <p>{intl.formatMessage(messages.privacyNotice)}</p>
-              <button type="button" onClick={this.clearTranslationCache}>
-                {intl.formatMessage(messages.clearCache)}
+              {this.state.cacheEnabled !== null && (
+                <div className="translator-toggle-row">
+                  <span>{intl.formatMessage(messages.cacheEnabled)}</span>
+                  {this.renderSwitch({
+                    checked: this.state.cacheEnabled,
+                    label: intl.formatMessage(messages.cacheEnabled),
+                    onChange: this.setCacheEnabled,
+                  })}
+                </div>
+              )}
+              {this.state.cacheEnabled === false && (
+                <p>{intl.formatMessage(messages.cacheDisabledHint)}</p>
+              )}
+              <button
+                type="button"
+                onClick={() => this.clearTranslationCache(activeService.id)}
+              >
+                {intl.formatMessage(messages.clearServiceCache)}
+              </button>
+              <button
+                type="button"
+                onClick={() => this.clearTranslationCache()}
+              >
+                {intl.formatMessage(messages.clearAllCache)}
               </button>
               {this.state.cacheStatus && (
                 <p role="status">{this.state.cacheStatus}</p>
               )}
             </details>
+            {this.state.lastEngineUsed?.serviceId === activeService.id && (
+              <p className="translator-engine-section__notice" role="status">
+                {intl.formatMessage(
+                  this.state.lastEngineUsed.fromCache
+                    ? messages.cachedEngine
+                    : this.state.lastEngineUsed.usedEngine ===
+                        this.state.lastEngineUsed.requestedEngine
+                      ? messages.actualEngine
+                      : messages.fallbackEngine,
+                  { engine: this.state.lastEngineUsed.usedEngine },
+                )}
+              </p>
+            )}
           </div>
         </div>
       </aside>

@@ -60,6 +60,11 @@ import { asarPath } from './helpers/asar-helpers';
 import { checkIfCertIsPresent } from './helpers/certs-helpers';
 import { getTranslationCache } from './helpers/translation-cache';
 import {
+  checkTranslationEngine,
+  getTranslationDirections,
+  type EngineHealth,
+} from './helpers/translation-engine-health';
+import {
   clearSavedBaiduCredentials,
   getBaiduCredentialStatus,
   saveBaiduCredentials,
@@ -124,6 +129,7 @@ const TRANSLATION_RESULT_CACHE_FILE = userDataPath(
   'translation-result-cache-v1.json',
 );
 const TRANSLATION_RESULT_CACHE_MAX_ENTRIES = 5000;
+let translationCacheGeneration = 0;
 const TRANSLATOR_ENGINES = [
   'Google',
   'Baidu',
@@ -138,9 +144,11 @@ const CONFIGURABLE_TRANSLATOR_ENGINES = new Set([
   'Youdao',
   'Aliyun',
 ]);
-let engineStatusCheckedAt = 0;
-let engineStatusCache: { engine: string; available: boolean }[] = [];
-let engineStatusRequest: Promise<typeof engineStatusCache> | null = null;
+const engineStatusCache = new Map<
+  string,
+  { checkedAt: number; status: EngineHealth[] }
+>();
+const engineStatusRequests = new Map<string, Promise<EngineHealth[]>>();
 let engineStatusGeneration = 0;
 
 const requireMainWindowSender = (sender: Electron.WebContents) => {
@@ -151,67 +159,91 @@ const requireMainWindowSender = (sender: Electron.WebContents) => {
   }
 };
 
-const probeTranslatorEngine = async (engine: string) => {
-  const credentials = CONFIGURABLE_TRANSLATOR_ENGINES.has(engine)
-    ? getProviderCredentials(engine as ConfigurableTranslationEngine)
-    : null;
-  if (['Baidu', 'Youdao', 'Aliyun'].includes(engine) && !credentials) {
-    return { engine, available: false };
-  }
-  try {
-    const result = await Promise.race([
-      translateTo('Good morning', 'zh', engine, {
-        fromLanguage: 'en',
-        baiduAppId: credentials?.appId,
-        baiduSecretKey: credentials?.secretKey,
-        providerCredentials: credentials,
-        allowFallback: false,
-      }),
-      new Promise<null>(resolve => {
-        setTimeout(() => resolve(null), 12_000);
-      }),
-    ]);
-    return {
-      engine,
-      available: Boolean(
-        result &&
-          !result.error &&
-          result.text.trim() &&
-          result.text.trim() !== 'Good morning',
-      ),
-    };
-  } catch {
-    return { engine, available: false };
+const notifyUsedTranslatorEngine = (
+  serviceId: string | undefined,
+  requestedEngine: string,
+  usedEngine: string | undefined,
+  fromCache = false,
+) => {
+  if (serviceId && usedEngine) {
+    mainWindow?.webContents.send('translator:engine-used', {
+      serviceId,
+      requestedEngine,
+      usedEngine,
+      fromCache,
+    });
   }
 };
 
-const getTranslatorEngineStatus = (force = false) => {
-  if (engineStatusRequest) return engineStatusRequest;
-  if (!force && Date.now() - engineStatusCheckedAt < 600_000) {
-    return Promise.resolve(engineStatusCache);
+const getTranslatorEngineStatus = (
+  configuration?: {
+    myLanguage: string;
+    targetLanguage: string;
+    sendTranslation: boolean;
+    receiveTranslation: boolean;
+  },
+  force = false,
+) => {
+  if (
+    configuration?.receiveTranslation &&
+    configuration.myLanguage === 'auto'
+  ) {
+    return Promise.resolve(
+      TRANSLATOR_ENGINES.map(engine => ({
+        engine,
+        available: false,
+        reason: 'invalid-target-language' as const,
+      })),
+    );
+  }
+  const directions = getTranslationDirections(
+    configuration || {
+      myLanguage: 'en',
+      targetLanguage: 'zh',
+      sendTranslation: true,
+      receiveTranslation: false,
+    },
+  );
+  const key = JSON.stringify(directions);
+  const pending = engineStatusRequests.get(key);
+  if (pending) return pending;
+  const cached = engineStatusCache.get(key);
+  if (!force && cached && Date.now() - cached.checkedAt < 600_000) {
+    return Promise.resolve(cached.status);
   }
   const generation = engineStatusGeneration;
   const request = Promise.all(
-    TRANSLATOR_ENGINES.map(engine => probeTranslatorEngine(engine)),
+    TRANSLATOR_ENGINES.map(engine =>
+      checkTranslationEngine(
+        engine,
+        directions,
+        CONFIGURABLE_TRANSLATOR_ENGINES.has(engine)
+          ? getProviderCredentials(engine as ConfigurableTranslationEngine)
+          : null,
+      ),
+    ),
   )
     .then(status => {
       if (generation === engineStatusGeneration) {
-        engineStatusCache = status;
-        engineStatusCheckedAt = Date.now();
+        engineStatusCache.set(key, { status, checkedAt: Date.now() });
       }
       return status;
     })
     .finally(() => {
-      if (engineStatusRequest === request) engineStatusRequest = null;
+      if (engineStatusRequests.get(key) === request)
+        engineStatusRequests.delete(key);
     });
-  engineStatusRequest = request;
+  engineStatusRequests.set(key, request);
   return request;
 };
 
-ipcMain.handle('translator:get-engine-status', (event, force = false) => {
-  requireMainWindowSender(event.sender);
-  return getTranslatorEngineStatus(Boolean(force));
-});
+ipcMain.handle(
+  'translator:get-engine-status',
+  (event, force, configuration) => {
+    requireMainWindowSender(event.sender);
+    return getTranslatorEngineStatus(configuration, Boolean(force));
+  },
+);
 
 const requireConfigurableEngine = (engine: string) => {
   if (!CONFIGURABLE_TRANSLATOR_ENGINES.has(engine)) {
@@ -222,8 +254,8 @@ const requireConfigurableEngine = (engine: string) => {
 
 const notifyTranslatorEnginesChanged = () => {
   engineStatusGeneration += 1;
-  engineStatusCheckedAt = 0;
-  engineStatusRequest = null;
+  engineStatusCache.clear();
+  engineStatusRequests.clear();
   mainWindow?.webContents.send('translator:engines-changed');
 };
 
@@ -270,11 +302,34 @@ ipcMain.handle('translator:clear-baidu-credentials', event => {
   return getBaiduCredentialStatus();
 });
 
-ipcMain.handle('translator:clear-cache', () => {
-  getTranslationCache(
+ipcMain.handle('translator:get-cache-settings', event => {
+  requireMainWindowSender(event.sender);
+  return { enabled: settings.get('translationCacheEnabled') !== false };
+});
+
+ipcMain.handle('translator:set-cache-enabled', (event, enabled: boolean) => {
+  requireMainWindowSender(event.sender);
+  if (typeof enabled !== 'boolean') throw new Error('Invalid cache setting');
+  settings.set({ translationCacheEnabled: enabled });
+  if (!enabled) {
+    translationCacheGeneration += 1;
+    getTranslationCache(
+      TRANSLATION_RESULT_CACHE_FILE,
+      TRANSLATION_RESULT_CACHE_MAX_ENTRIES,
+    )?.clear();
+  }
+  return { enabled };
+});
+
+ipcMain.handle('translator:clear-cache', (event, serviceId?: string) => {
+  requireMainWindowSender(event.sender);
+  translationCacheGeneration += 1;
+  const cache = getTranslationCache(
     TRANSLATION_RESULT_CACHE_FILE,
     TRANSLATION_RESULT_CACHE_MAX_ENTRIES,
-  )?.clear();
+  );
+  if (serviceId) cache?.clearService(serviceId);
+  else cache?.clear();
   return true;
 });
 
@@ -775,7 +830,10 @@ app.on('login', (event, _webContents, _request, authInfo, callback) => {
 
 ipcMain.handle(
   'translate',
-  async (_e, { text, translateToLanguage, translatorEngine, fromLanguage }) => {
+  async (
+    _e,
+    { text, translateToLanguage, translatorEngine, fromLanguage, serviceId },
+  ) => {
     debug('IPC translate handle called:', {
       textLength: text?.length,
       translateToLanguage,
@@ -784,6 +842,7 @@ ipcMain.handle(
     });
 
     try {
+      const cacheGeneration = translationCacheGeneration;
       const providerCredentials = CONFIGURABLE_TRANSLATOR_ENGINES.has(
         translatorEngine,
       )
@@ -797,12 +856,27 @@ ipcMain.handle(
         translatorEngine || 'Google',
         {
           fromLanguage,
-          cacheFilePath: TRANSLATION_RESULT_CACHE_FILE,
+          cacheFilePath:
+            settings.get('translationCacheEnabled') === false
+              ? undefined
+              : TRANSLATION_RESULT_CACHE_FILE,
+          shouldCache: () =>
+            settings.get('translationCacheEnabled') !== false &&
+            cacheGeneration === translationCacheGeneration,
+          serviceId,
           baiduAppId: providerCredentials?.appId,
           baiduSecretKey: providerCredentials?.secretKey,
           providerCredentials,
         },
       );
+
+      if (!response.error)
+        notifyUsedTranslatorEngine(
+          serviceId,
+          translatorEngine || 'Google',
+          response.usedEngine,
+          response.fromCache,
+        );
 
       debug('IPC translate handle response:', {
         success: !response.error,
@@ -936,9 +1010,17 @@ ipcMain.on(
 
       // 鍑嗗缈昏瘧閫夐」锛屽寘鎷櫨搴?API 閰嶇疆
       // translateTo 鍑芥暟浼氫粠鐜鍙橀噺鎴栧唴缃厤缃腑鑾峰彇鐧惧害 API 瀵嗛挜
+      const cacheGeneration = translationCacheGeneration;
       const translateOptions: any = {
         fromLanguage: fromLang,
-        cacheFilePath: TRANSLATION_RESULT_CACHE_FILE,
+        serviceId,
+        shouldCache: () =>
+          settings.get('translationCacheEnabled') !== false &&
+          cacheGeneration === translationCacheGeneration,
+        cacheFilePath:
+          settings.get('translationCacheEnabled') === false
+            ? undefined
+            : TRANSLATION_RESULT_CACHE_FILE,
       };
 
       // 濡傛灉浣跨敤鐧惧害缈昏瘧锛屽皾璇曚粠鐜鍙橀噺鑾峰彇閰嶇疆锛坱ranslateTo 鍐呴儴浼氫娇鐢ㄥ唴缃厤缃綔涓哄悗澶囷級
@@ -958,6 +1040,13 @@ ipcMain.on(
         translatorEngine || 'Google',
         translateOptions,
       );
+      if (!response.error)
+        notifyUsedTranslatorEngine(
+          serviceId,
+          translatorEngine || 'Google',
+          response.usedEngine,
+          response.fromCache,
+        );
       // eslint-disable-next-line no-console
       console.log('[Translator Main] Response', {
         serviceId,
@@ -1019,17 +1108,21 @@ ipcMain.handle(
     _event,
     {
       translatedText,
+      serviceId,
       fromLanguage,
       toLanguage,
       translatorEngine,
     }: {
       translatedText: string;
+      serviceId?: string;
       fromLanguage?: string;
       toLanguage?: string;
       translatorEngine?: string;
     },
   ) => {
     try {
+      if (settings.get('translationCacheEnabled') === false)
+        return { found: false, text: '' };
       const cache = getTranslationCache(
         TRANSLATION_RESULT_CACHE_FILE,
         TRANSLATION_RESULT_CACHE_MAX_ENTRIES,
@@ -1045,6 +1138,7 @@ ipcMain.handle(
 
       let originalText =
         cache.lookupOriginalByTranslatedText({
+          serviceId,
           translatedText: normalizedTranslatedText,
           fromLanguage: normalizedFromLanguage,
           toLanguage: normalizedToLanguage,
@@ -1056,6 +1150,7 @@ ipcMain.handle(
       if (!originalText && normalizedTranslatedText) {
         originalText =
           cache.lookupOriginalByTranslatedText({
+            serviceId,
             translatedText: normalizedTranslatedText,
             fromLanguage: normalizedFromLanguage,
             toLanguage: '',
@@ -1066,6 +1161,7 @@ ipcMain.handle(
       if (!originalText && normalizedTranslatedText) {
         originalText =
           cache.lookupOriginalByTranslatedText({
+            serviceId,
             translatedText: normalizedTranslatedText,
             fromLanguage: '',
             toLanguage: '',

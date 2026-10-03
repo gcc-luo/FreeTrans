@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { removeSync } from 'fs-extra';
 import {
+  TRANSLATION_CACHE_RETENTION_MS,
   clearTranslationCacheInstancesForTests,
   getTranslationCache,
 } from '../../src/helpers/translation-cache';
@@ -113,6 +114,59 @@ describe('translation-cache', () => {
         engine: 'Google',
       }),
     ).toBeNull();
+  });
+
+  it('isolates messages by service and clears only the selected service', () => {
+    const cache = getTranslationCache(join(tempDir, 'cache.json'), 100);
+    const request = {
+      sourceText: 'hello',
+      fromLanguage: 'en',
+      toLanguage: 'zh',
+      engine: 'Google',
+    };
+    cache?.save({ ...request, serviceId: 'whatsapp' }, '你好', 'Google');
+    cache?.save({ ...request, serviceId: 'googlechat' }, '您好', 'MyMemory');
+
+    expect(cache?.lookup({ ...request, serviceId: 'whatsapp' })).toBe('你好');
+    expect(cache?.lookup({ ...request, serviceId: 'googlechat' })).toBe('您好');
+    expect(cache?.lookup(request)).toBeNull();
+    expect(
+      cache?.lookupOriginalByTranslatedText({
+        serviceId: 'whatsapp',
+        translatedText: '您好',
+      }),
+    ).toBeNull();
+    expect(
+      cache?.lookupResult({ ...request, serviceId: 'googlechat' }),
+    ).toEqual({ text: '您好', usedEngine: 'MyMemory' });
+
+    cache?.save(request, 'legacy translation');
+    cache?.clearService('whatsapp');
+    expect(cache?.lookup({ ...request, serviceId: 'whatsapp' })).toBeNull();
+    expect(cache?.lookup(request)).toBeNull();
+    expect(cache?.lookup({ ...request, serviceId: 'googlechat' })).toBe('您好');
+  });
+
+  it('expires conversation text after seven days, including after reload', () => {
+    const cacheFilePath = join(tempDir, 'cache.json');
+    const now = Date.now();
+    const nowSpy = jest.spyOn(Date, 'now');
+    const request = {
+      serviceId: 'whatsapp',
+      sourceText: 'private message',
+      fromLanguage: 'en',
+      toLanguage: 'zh',
+      engine: 'Google',
+    };
+    try {
+      nowSpy.mockReturnValue(now);
+      getTranslationCache(cacheFilePath)?.save(request, '私人消息');
+      nowSpy.mockReturnValue(now + TRANSLATION_CACHE_RETENTION_MS + 1);
+      clearTranslationCacheInstancesForTests();
+      expect(getTranslationCache(cacheFilePath)?.lookup(request)).toBeNull();
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it('prunes least-recently-updated entries when max size is reached', async () => {

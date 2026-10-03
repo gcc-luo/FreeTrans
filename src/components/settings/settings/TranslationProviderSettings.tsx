@@ -103,11 +103,12 @@ const messages = defineMessages({
   },
   verified: {
     id: 'settings.translator.providers.verified',
-    defaultMessage: '检测通过，可以使用。',
+    defaultMessage:
+      '默认英译中检测通过；当前会话语言请以翻译工具中的状态为准。',
   },
   failed: {
     id: 'settings.translator.providers.failed',
-    defaultMessage: '已保存，但检测未通过。请检查凭据、额度和网络。',
+    defaultMessage: '已保存，但默认英译中检测未通过。请检查凭据、额度和网络。',
   },
   saveFailed: {
     id: 'settings.translator.providers.saveFailed',

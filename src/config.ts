@@ -556,6 +556,7 @@ export const DEFAULT_APP_SETTINGS = {
   showDragArea: false,
   enableSpellchecking: true,
   enableTranslator: false,
+  translationCacheEnabled: true,
   spellcheckerLanguage: 'en-us',
   darkMode: false,
   navigationBarManualActive: false,

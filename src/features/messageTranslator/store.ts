@@ -1892,6 +1892,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           if (!normalizedTranslated) return '';
 
           const cacheKey = [
+            '${serviceId}',
             toComparableText(normalizedTranslated),
             normalizeLanguageTag(state.settings.targetLanguage || ''),
             normalizeLanguageTag(state.settings.myLanguage || ''),
@@ -1912,6 +1913,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                 const response = await ipcRenderer.invoke(
                   'translator:lookup-original',
                   {
+                    serviceId: '${serviceId}',
                     translatedText: normalizedTranslated,
                     fromLanguage: state.settings.myLanguage || '',
                     toLanguage: state.settings.targetLanguage || '',
@@ -3159,6 +3161,38 @@ export default class MessageTranslatorStore extends FeatureStore {
           node.style.display = on ? 'block' : 'none';
         };
 
+        const showUnsentDraftRecovery = (original, sendAttempted = false) => {
+          document.querySelector('[data-ferdium-unsent-draft]')?.remove();
+          const overlay = document.createElement('div');
+          overlay.setAttribute('data-ferdium-unsent-draft', '1');
+          overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.48);display:flex;align-items:center;justify-content:center;padding:16px;';
+          const card = document.createElement('div');
+          card.style.cssText = 'width:min(480px,100%);background:#fff;color:#1f2937;border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.25);font:14px/1.5 sans-serif;';
+          const title = document.createElement('strong');
+          title.textContent = sendAttempted
+            ? '无法确认消息是否已发送'
+            : '会话已切换，译文未发送';
+          const hint = document.createElement('p');
+          hint.textContent = sendAttempted
+            ? '请先检查聊天记录，避免重复发送。原文可在此复制。'
+            : '原文已保留在此处。请检查当前输入框，避免误发，再复制原文。';
+          const source = document.createElement('textarea');
+          source.readOnly = true;
+          source.value = original;
+          source.setAttribute('aria-label', '未发送的原文');
+          source.style.cssText = 'box-sizing:border-box;width:100%;min-height:100px;padding:8px;border:1px solid #9ca3af;border-radius:6px;resize:vertical;font:inherit;';
+          const close = document.createElement('button');
+          close.type = 'button';
+          close.textContent = '关闭';
+          close.style.cssText = 'display:block;margin:12px 0 0 auto;padding:6px 12px;border:0;border-radius:6px;background:#2563eb;color:#fff;cursor:pointer;';
+          close.addEventListener('click', () => overlay.remove());
+          card.append(title, hint, source, close);
+          overlay.appendChild(card);
+          document.body.appendChild(overlay);
+          source.focus();
+          source.select();
+        };
+
         const confirmTranslatedMessage = (original, translated) =>
           new Promise(resolve => {
             const overlay = document.createElement('div');
@@ -3225,6 +3259,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           }
 
           const requestParams = {
+            serviceId: '${serviceId}',
             text,
             translateToLanguage:
               options.toLang || state.settings.targetLanguage || 'en',
@@ -4107,8 +4142,14 @@ export default class MessageTranslatorStore extends FeatureStore {
             return;
           }
 
+          const initialChatSignature = getActiveChatSignature();
+          const isSameChat = () =>
+            isActiveInterceptorInstance() &&
+            getActiveChatSignature() === initialChatSignature;
+
           let hideStatusImmediately = true;
           let nativeSendAttempted = false;
+          let writtenTranslation = '';
           state.translating = true;
           state.activeTranslateOpId = operationId;
           showStatus('Translating...', true, false);
@@ -4200,6 +4241,12 @@ export default class MessageTranslatorStore extends FeatureStore {
               return;
             }
             const finalSendText = confirmedText;
+            if (!isSameChat()) {
+              throw new Error('会话已切换，译文未发送');
+            }
+            if (getComposerText(readComposer()) !== original) {
+              throw new Error('草稿已更改，译文未发送');
+            }
             console.log(
               '[Ferdium Translator] Setting composer text to:',
               finalSendText.length,
@@ -4212,6 +4259,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               reason: 'translate-first-set',
               originalText: original,
             });
+            writtenTranslation = finalSendText;
             await sleep(180);
             let afterSet = getComposerText(activeComposer);
             console.log('[Ferdium Translator] After first set, composer text:', afterSet?.length);
@@ -4286,6 +4334,9 @@ export default class MessageTranslatorStore extends FeatureStore {
             if (!isComposerSynced(afterSet, finalSendText, original)) {
               throw new Error('composer-update-failed');
             }
+            if (!isSameChat()) {
+              throw new Error('会话已切换，译文未发送');
+            }
             console.log('[Ferdium Translator] Triggering native send', { operationId });
             state.bypassSendUntil = Date.now() + 2400;
             const outgoingRowCountBeforeSend = getOutgoingMessageRows().length;
@@ -4301,12 +4352,18 @@ export default class MessageTranslatorStore extends FeatureStore {
             }
             console.log('[Ferdium Translator] ===== Translation and send completed =====', { operationId });
           } catch (error) {
-            if (!nativeSendAttempted) {
+            if (writtenTranslation && (nativeSendAttempted || !isSameChat())) {
+              showUnsentDraftRecovery(original, nativeSendAttempted);
+            }
+            if (!nativeSendAttempted && writtenTranslation && isSameChat()) {
               try {
-                setComposerText(readComposer() || composer, original, {
-                  operationId,
-                  reason: 'restore-draft-after-translation-failure',
-                });
+                const currentComposer = readComposer() || composer;
+                if (getComposerText(currentComposer) === writtenTranslation) {
+                  setComposerText(currentComposer, original, {
+                    operationId,
+                    reason: 'restore-draft-after-translation-failure',
+                  });
+                }
               } catch (_restoreError) {}
             }
             console.error('[Ferdium Translator] ===== Translation failed =====', error);

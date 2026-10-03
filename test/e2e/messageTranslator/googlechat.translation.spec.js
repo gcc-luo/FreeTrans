@@ -42,8 +42,10 @@ async function captureInjectedScript() {
 
 async function setupGoogleChatSimulation(page, options = {}) {
   const forceHostFallback = !!options.forceHostFallback;
+  const translationFails = !!options.translationFails;
   await page.setContent(`
     <div role="main" style="padding: 12px;">
+      <header><h1>Teammate</h1></header>
       <div role="listitem" aria-label="You said" data-is-own-message="true">
         <div dir="auto">Hello from history</div>
       </div>
@@ -63,7 +65,7 @@ async function setupGoogleChatSimulation(page, options = {}) {
   `);
 
   await page.evaluate(
-    ({ forceHostFallback: fallback }) => {
+    ({ forceHostFallback: fallback, translationFails: fail }) => {
       /* eslint-disable no-console -- test: capture console in page for assertions */
       const logs = [];
       const originalLog = console.log.bind(console);
@@ -122,6 +124,7 @@ async function setupGoogleChatSimulation(page, options = {}) {
           invokeCalls.push({ channel, payload });
           if (channel === 'translate') {
             if (fallback) throw new Error('invoke-forced-failure');
+            if (fail) return { text: 'Translation unavailable', error: true };
             const source = String(payload?.text || '');
             if (/[\u4E00-\u9FFF]/.test(source)) {
               return { text: 'Hello from translation', error: false };
@@ -147,9 +150,11 @@ async function setupGoogleChatSimulation(page, options = {}) {
             setTimeout(() => {
               emitChannel('translator:translation-result', {
                 requestId: payload?.requestId,
-                success: true,
-                text: 'Host translated fallback',
-                error: false,
+                success: !fail,
+                text: fail
+                  ? 'Translation unavailable'
+                  : 'Host translated fallback',
+                error: fail,
               });
             }, 0);
           }
@@ -195,7 +200,7 @@ async function setupGoogleChatSimulation(page, options = {}) {
       };
       /* eslint-enable sonar/class-prototype */
     },
-    { forceHostFallback },
+    { forceHostFallback, translationFails },
   );
 
   const script = await captureInjectedScript();
@@ -268,6 +273,97 @@ async function triggerSubmitAndWait(page, expectedText) {
 }
 
 test.describe('Google Chat translator e2e simulation (Playwright)', () => {
+  test('翻译服务失败时不发送并保留原文', async ({ page }) => {
+    await setupGoogleChatSimulation(page, { translationFails: true });
+    const composer = page.locator(
+      'div[contenteditable="true"][role="textbox"]',
+    );
+    await composer.click();
+    await page.keyboard.type('你好，保留原文');
+    await page.locator('button[aria-label="Send message"]').click();
+
+    await expect(composer).toContainText('你好，保留原文');
+    await expect(page.locator('div[role="listitem"]')).toHaveCount(2);
+  });
+
+  test('确认前切换会话时不会把译文发送到新会话', async ({ page }) => {
+    await setupGoogleChatSimulation(page);
+    const composer = page.locator(
+      'div[contenteditable="true"][role="textbox"]',
+    );
+    await composer.click();
+    await page.keyboard.type('你好，切换会话');
+    await page.locator('button[aria-label="Send message"]').click();
+    await page.locator('[data-ferdium-translation-confirm]').waitFor();
+    await page.locator('header h1').evaluate(element => {
+      element.replaceChildren(document.createTextNode('Another teammate'));
+    });
+    await page
+      .locator('[data-ferdium-translation-confirm] button', {
+        hasText: '发送译文',
+      })
+      .click();
+
+    await expect(composer).toContainText('你好，切换会话');
+    await expect(page.locator('div[role="listitem"]')).toHaveCount(2);
+  });
+
+  test('确认前修改草稿时不会覆盖或发送新内容', async ({ page }) => {
+    await setupGoogleChatSimulation(page);
+    const composer = page.locator(
+      'div[contenteditable="true"][role="textbox"]',
+    );
+    await composer.click();
+    await page.keyboard.type('你好，原草稿');
+    await page.locator('button[aria-label="Send message"]').click();
+    await page.locator('[data-ferdium-translation-confirm]').waitFor();
+    await composer.evaluate(element => {
+      element.replaceChildren(document.createTextNode('用户后来修改的草稿'));
+    });
+    await page
+      .locator('[data-ferdium-translation-confirm] button', {
+        hasText: '发送译文',
+      })
+      .click();
+
+    await expect(composer).toContainText('用户后来修改的草稿');
+    await expect(page.locator('div[role="listitem"]')).toHaveCount(2);
+  });
+
+  test('写入译文后切换会话时保留可恢复的原文', async ({ page }) => {
+    await setupGoogleChatSimulation(page);
+    const composer = page.locator(
+      'div[contenteditable="true"][role="textbox"]',
+    );
+    await composer.click();
+    await page.keyboard.type('你好，待恢复');
+    await page.evaluate(() => {
+      const editable = document.querySelector('[contenteditable="true"]');
+      const observer = new MutationObserver(() => {
+        if (editable?.textContent?.includes('Hello from translation')) {
+          document
+            .querySelector('header h1')
+            ?.replaceChildren(document.createTextNode('Another teammate'));
+          observer.disconnect();
+        }
+      });
+      if (editable)
+        observer.observe(editable, { childList: true, subtree: true });
+    });
+    await page.locator('button[aria-label="Send message"]').click();
+    await page
+      .locator('[data-ferdium-translation-confirm] button', {
+        hasText: '发送译文',
+      })
+      .click();
+
+    await expect(page.locator('[data-ferdium-unsent-draft]')).toBeVisible();
+    await expect(
+      page.locator('[data-ferdium-unsent-draft] textarea'),
+    ).toHaveValue('你好，待恢复');
+    await expect(page.locator('div[role="listitem"]')).toHaveCount(2);
+  });
+
   test('取消发送会保留原文草稿', async ({ page }) => {
     await setupGoogleChatSimulation(page);
     const composer = page.locator(
