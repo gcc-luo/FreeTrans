@@ -9,14 +9,12 @@ export default function handleDeepLink(
     return;
   }
 
-  const url = rawUrl.replace(`${protocolClient}://`, '');
+  const protocolPrefix = `${protocolClient}://`;
+  const protocolIndex = rawUrl.indexOf(protocolPrefix);
+  if (protocolIndex === -1) return;
 
-  // The next line is a workaround after this 71c5237 [chore: Mobx & React-Router upgrade (#406)].
-  // For some reason, the app won't start until because it's trying to route to './build'.
-  // TODO: Check what is wrong with DeepLinking - it is broken for some reason. This is causing several troubles.
-  const workaroundDeepLink = ['./build', '--allow-file-access-from-files'];
-
-  if (!url || workaroundDeepLink.includes(url)) return;
+  const url = rawUrl.slice(protocolIndex + protocolPrefix.length);
+  if (!url) return;
 
   window.webContents.send('navigateFromDeepLink', { url });
 }
