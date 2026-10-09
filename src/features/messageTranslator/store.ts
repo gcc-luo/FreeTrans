@@ -2211,7 +2211,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           if (!nextSignature) return;
           if (nextSignature === activeChatSignature) return;
           activeChatSignature = nextSignature;
-          scheduleOutgoingHistoryScan(reason + ':outgoing', 80);
+          scheduleBootstrapFormattingPass(reason);
         };
 
         const startActiveChatWatcher = () => {
@@ -3248,7 +3248,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             card.append(title, sourceLabel, source, translationLabel, editor, actions);
             overlay.appendChild(card);
             document.body.appendChild(overlay);
-            editor.focus();
+            send.focus();
           });
 
         const translateByInvoke = async (text, options = {}) => {
@@ -4722,7 +4722,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           () => {
             if (document.visibilityState === 'visible') {
               scheduleIncomingScan('visibility-change', 160);
-              scheduleOutgoingHistoryScan('visibility-change', 220);
+              scheduleBootstrapFormattingPass('visibility-change');
               refreshFormattingForActiveChat('visibility-change');
             }
           },
