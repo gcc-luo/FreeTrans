@@ -13,7 +13,6 @@ import { userDataRecipesPath } from '../../environment-remote';
 import { communityRecipesStore } from '../../features/communityRecipes';
 import { asarRecipesPath } from '../../helpers/asar-helpers';
 import { openPath } from '../../helpers/url-helpers';
-import type Recipe from '../../models/Recipe';
 import RecipePreview from '../../models/RecipePreview';
 
 interface IProps extends Partial<StoresProps> {
@@ -30,7 +29,7 @@ interface IState {
 class RecipesScreen extends Component<IProps, IState> {
   autorunDisposer: IReactionDisposer | null = null;
 
-  customRecipes: Recipe[] = [];
+  customRecipes: RecipePreview[] = [];
 
   constructor(props: IProps) {
     super(props);
@@ -103,8 +102,8 @@ class RecipesScreen extends Component<IProps, IState> {
   }
 
   // Create an array of RecipePreviews from an array of recipe objects
-  createPreviews(recipes: Recipe[]) {
-    return recipes.map((recipe: any) => new RecipePreview(recipe));
+  createPreviews(recipes: RecipePreview[]) {
+    return recipes.map(recipe => new RecipePreview(recipe));
   }
 
   resetSearch(): void {
@@ -126,7 +125,12 @@ class RecipesScreen extends Component<IProps, IState> {
     } else if (filter === 'dev') {
       recipeFilter = communityRecipesStore.communityRecipes;
     } else {
-      recipeFilter = recipePreviews.featured;
+      recipeFilter = this.prepareRecipes([
+        ...recipePreviews.featured,
+        ...this.createPreviews(
+          this.customRecipes.filter(recipe => recipe.featured),
+        ),
+      ]);
     }
     recipeFilter = [...recipeFilter].sort(this._sortByName);
 
@@ -140,7 +144,7 @@ class RecipesScreen extends Component<IProps, IState> {
             // All search recipes from local recipes
             ...this.createPreviews(
               this.customRecipes.filter(
-                (recipe: Recipe) =>
+                (recipe: RecipePreview) =>
                   recipe.name.toLowerCase().includes(needle.toLowerCase()) ||
                   (recipe.aliases || []).some(alias =>
                     alias.toLowerCase().includes(needle.toLowerCase()),

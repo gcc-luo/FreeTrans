@@ -19,6 +19,7 @@ import {
   TRANSLATOR_DEFAULT_WIDTH,
   TRANSLATOR_MIN_WIDTH,
 } from './constants';
+import { buildTelegramInterceptorScript } from './telegram-interceptor';
 
 const debug = require('../../preload-safe-debug')(
   'Ferdium:feature:messageTranslator:store',
@@ -123,7 +124,7 @@ export default class MessageTranslatorStore extends FeatureStore {
 
   _resolveTranslatorInterceptorPlatform = (
     service: any,
-  ): 'whatsapp' | 'googlechat' | null => {
+  ): 'whatsapp' | 'googlechat' | 'telegram' | null => {
     if (!service) return null;
 
     const recipeId = String(service?.recipe?.id || '')
@@ -131,6 +132,9 @@ export default class MessageTranslatorStore extends FeatureStore {
       .toLowerCase();
     if (recipeId === 'whatsapp') {
       return 'whatsapp';
+    }
+    if (recipeId === 'telegram') {
+      return 'telegram';
     }
     if (
       recipeId === 'googlechat' ||
@@ -150,6 +154,13 @@ export default class MessageTranslatorStore extends FeatureStore {
 
     if (serviceUrl.includes('web.whatsapp.com')) {
       return 'whatsapp';
+    }
+    if (
+      /^https?:\/\/(?:web|webk|webz)\.telegram\.org(?:[#/:?]|$)/.test(
+        serviceUrl,
+      )
+    ) {
+      return 'telegram';
     }
     if (
       serviceUrl.includes('chat.google.com') ||
@@ -219,7 +230,11 @@ export default class MessageTranslatorStore extends FeatureStore {
         },
       });
 
-      this._ensureWhatsAppInterceptor(serviceId, interceptorPlatform)
+      const inject =
+        interceptorPlatform === 'telegram'
+          ? this._ensureTelegramInterceptor(serviceId)
+          : this._ensureWhatsAppInterceptor(serviceId, interceptorPlatform);
+      inject
         .then(status => {
           console.log(
             '[Ferdium Translator Store] Translator interceptor injection result:',
@@ -241,7 +256,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               this._whatsAppRetryTimers.delete(serviceId);
             }
             // 鏍囪涓哄凡娉ㄥ叆
-            if (status === 'ok') {
+            if (status === 'ok' && interceptorPlatform !== 'telegram') {
               this._injectedWhatsAppServices.add(serviceId);
             }
             console.log(
@@ -308,6 +323,27 @@ export default class MessageTranslatorStore extends FeatureStore {
 
     this._whatsAppRetryTimers.set(serviceId, timer);
   };
+
+  async _ensureTelegramInterceptor(serviceId: string): Promise<string> {
+    const service = this.stores?.services?.one?.(serviceId);
+    if (!service?.webview?.executeJavaScript) return 'no-webview';
+
+    const settings = this.getServiceSettings(serviceId);
+    const script = buildTelegramInterceptorScript(serviceId, {
+      myLanguage: settings.myLanguage,
+      targetLanguage: settings.targetLanguage,
+      translatorEngine: settings.translatorEngine,
+      sendTranslation: settings.sendTranslation,
+      receiveTranslation: settings.receiveTranslation,
+    });
+
+    try {
+      return service.webview.executeJavaScript(script, true);
+    } catch (error) {
+      console.error('[FreeTrans Telegram] Interceptor injection failed', error);
+      return 'error';
+    }
+  }
 
   async _ensureWhatsAppInterceptor(
     serviceId: string,

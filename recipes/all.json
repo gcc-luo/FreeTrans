@@ -1,0 +1,12 @@
+[
+  {
+    "id": "telegram",
+    "name": "Telegram",
+    "version": "3.4.5",
+    "featured": true,
+    "aliases": ["Telegram Web"],
+    "icons": {
+      "svg": "./assets/images/telegram.svg"
+    }
+  }
+]

@@ -77,7 +77,7 @@ describe('MessageTranslator language send flow', () => {
       services: {
         one: (serviceId: string) =>
           serviceId === 'service-1'
-            ? { recipe: { id: 'telegram' }, webview: {} }
+            ? { recipe: { id: 'custom' }, webview: {} }
             : null,
       },
     };
@@ -101,7 +101,7 @@ describe('MessageTranslator language send flow', () => {
       services: {
         one: (serviceId: string) =>
           serviceId === 'service-1'
-            ? { recipe: { id: 'telegram' }, webview: {} }
+            ? { recipe: { id: 'custom' }, webview: {} }
             : null,
       },
     };

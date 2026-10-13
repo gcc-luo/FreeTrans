@@ -97,11 +97,56 @@ describe('_resolveTranslatorInterceptorPlatform', () => {
     });
   });
 
+  describe('returns telegram for Telegram services', () => {
+    it('detects by recipe id', () => {
+      expect(
+        store._resolveTranslatorInterceptorPlatform({
+          recipe: { id: 'Telegram' },
+          url: '',
+        }),
+      ).toBe('telegram');
+    });
+
+    it.each([
+      'https://web.telegram.org/k/',
+      'https://web.telegram.org/a/',
+      'https://webk.telegram.org/',
+      'https://webz.telegram.org/',
+    ])('detects Telegram Web URL %s', (url: string) => {
+      expect(
+        store._resolveTranslatorInterceptorPlatform({
+          recipe: { id: 'custom' },
+          url,
+        }),
+      ).toBe('telegram');
+    });
+
+    it('routes Telegram through its own interceptor', async () => {
+      const telegramInject = jest
+        .spyOn(store, '_ensureTelegramInterceptor')
+        .mockResolvedValue('ok');
+      const whatsAppInject = jest.spyOn(store, '_ensureWhatsAppInterceptor');
+      store.stores = {
+        services: {
+          one: () => ({ recipe: { id: 'telegram' }, webview: {} }),
+        },
+      };
+      store.actions = { service: { sendIPCMessage: jest.fn() } };
+
+      store._pushSettingsToService('service-telegram');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(telegramInject).toHaveBeenCalledWith('service-telegram');
+      expect(whatsAppInject).not.toHaveBeenCalled();
+    });
+  });
+
   describe('returns null for unsupported services', () => {
     it('returns null for unknown recipe with no URL', () => {
       expect(
         store._resolveTranslatorInterceptorPlatform({
-          recipe: { id: 'telegram' },
+          recipe: { id: 'unknown' },
           url: '',
         }),
       ).toBeNull();
@@ -142,6 +187,15 @@ describe('_resolveTranslatorInterceptorPlatform', () => {
           url: 'https://web.whatsapp.com/',
         }),
       ).toBe('googlechat');
+    });
+
+    it('telegram recipe id wins over whatsapp URL', () => {
+      expect(
+        store._resolveTranslatorInterceptorPlatform({
+          recipe: { id: 'telegram' },
+          url: 'https://web.whatsapp.com/',
+        }),
+      ).toBe('telegram');
     });
   });
 
