@@ -8,11 +8,8 @@ import type { StoresProps } from '../../@types/ferdium-components.types';
 import RecipesDashboard from '../../components/settings/recipes/RecipesDashboard';
 import ErrorBoundary from '../../components/util/ErrorBoundary';
 import withParams from '../../components/util/WithParams';
-import { CUSTOM_WEBSITE_RECIPE_ID, FERDIUM_DEV_DOCS } from '../../config';
-import { userDataRecipesPath } from '../../environment-remote';
-import { communityRecipesStore } from '../../features/communityRecipes';
+import { resolveTranslationPlatformForRecipeId } from '../../features/messageTranslator/constants';
 import { asarRecipesPath } from '../../helpers/asar-helpers';
-import { openPath } from '../../helpers/url-helpers';
 import RecipePreview from '../../models/RecipePreview';
 
 interface IProps extends Partial<StoresProps> {
@@ -51,10 +48,8 @@ class RecipesScreen extends Component<IProps, IState> {
 
       if (filter === 'all' && currentFilter !== 'all') {
         this.setState({ currentFilter: 'all' });
-      } else if (filter === 'featured' && currentFilter !== 'featured') {
+      } else if (currentFilter !== 'featured') {
         this.setState({ currentFilter: 'featured' });
-      } else if (filter === 'dev' && currentFilter !== 'dev') {
-        this.setState({ currentFilter: 'dev' });
       }
     });
   }
@@ -101,6 +96,14 @@ class RecipesScreen extends Component<IProps, IState> {
     );
   }
 
+  prepareTranslationRecipes(recipes: RecipePreview[]): RecipePreview[] {
+    return this.prepareRecipes(
+      recipes.filter(recipe =>
+        resolveTranslationPlatformForRecipeId(recipe.id),
+      ),
+    );
+  }
+
   // Create an array of RecipePreviews from an array of recipe objects
   createPreviews(recipes: RecipePreview[]) {
     return recipes.map(recipe => new RecipePreview(recipe));
@@ -112,33 +115,28 @@ class RecipesScreen extends Component<IProps, IState> {
 
   render(): ReactElement {
     const { recipePreviews, recipes, services } = this.props.stores!;
-    const { app: appActions, service: serviceActions } = this.props.actions!;
+    const { service: serviceActions } = this.props.actions!;
     const filter = this.state.currentFilter;
 
-    let recipeFilter;
-
-    if (filter === 'all') {
-      recipeFilter = this.prepareRecipes([
-        ...recipePreviews.all,
-        ...this.createPreviews(this.customRecipes),
-      ]);
-    } else if (filter === 'dev') {
-      recipeFilter = communityRecipesStore.communityRecipes;
-    } else {
-      recipeFilter = this.prepareRecipes([
-        ...recipePreviews.featured,
-        ...this.createPreviews(
-          this.customRecipes.filter(recipe => recipe.featured),
-        ),
-      ]);
-    }
+    let recipeFilter =
+      filter === 'all'
+        ? this.prepareTranslationRecipes([
+            ...recipePreviews.all,
+            ...this.createPreviews(this.customRecipes),
+          ])
+        : this.prepareTranslationRecipes([
+            ...recipePreviews.featured,
+            ...this.createPreviews(
+              this.customRecipes.filter(recipe => recipe.featured),
+            ),
+          ]);
     recipeFilter = [...recipeFilter].sort(this._sortByName);
 
     const { needle } = this.state;
     const allRecipes =
       needle === null
         ? recipeFilter
-        : this.prepareRecipes([
+        : this.prepareTranslationRecipes([
             // All search recipes from server
             ...recipePreviews.searchResults,
             // All search recipes from local recipes
@@ -153,23 +151,16 @@ class RecipesScreen extends Component<IProps, IState> {
             ),
           ]).sort(this._sortByName);
 
-    const customWebsiteRecipe = recipePreviews.all.find(
-      service => service.id === CUSTOM_WEBSITE_RECIPE_ID,
-    );
-
     const isLoading =
       recipePreviews.featuredRecipePreviewsRequest.isExecuting ||
       recipePreviews.allRecipePreviewsRequest.isExecuting ||
       recipes.installRecipeRequest.isExecuting ||
       recipePreviews.searchRecipePreviewsRequest.isExecuting;
 
-    const recipeDirectory = userDataRecipesPath('dev');
-
     return (
       <ErrorBoundary>
         <RecipesDashboard
           recipes={allRecipes}
-          customWebsiteRecipe={customWebsiteRecipe}
           isLoading={isLoading}
           hasLoadedRecipes={
             recipePreviews.featuredRecipePreviewsRequest.wasExecuted
@@ -177,14 +168,8 @@ class RecipesScreen extends Component<IProps, IState> {
           showAddServiceInterface={serviceActions.showAddServiceInterface}
           searchRecipes={e => this.searchRecipes(e)}
           resetSearch={() => this.resetSearch()}
-          searchNeedle={this.state.needle}
           serviceStatus={services.actionStatus}
           recipeFilter={filter}
-          recipeDirectory={recipeDirectory}
-          openRecipeDirectory={() => openPath(recipeDirectory)}
-          openDevDocs={() =>
-            appActions.openExternalUrl({ url: FERDIUM_DEV_DOCS })
-          }
         />
       </ErrorBoundary>
     );

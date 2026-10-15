@@ -1,45 +1,22 @@
-import classnames from 'classnames';
-import { Component, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import {
   type WrappedComponentProps,
   defineMessages,
   injectIntl,
 } from 'react-intl';
 import withStyles, { type WithStylesProps } from 'react-jss';
-import shuffleArray from '../../../helpers/array-helpers';
 import type { Theme } from '../../../themes';
-import FullscreenLoader from '../FullscreenLoader';
 
 import styles from './styles';
 
 const messages = defineMessages({
-  addingFreeFeatures: {
-    id: 'loading.addingFreeFeatures',
-    defaultMessage: 'Adding free features',
+  connectingTitle: {
+    id: 'loading.connectingConversations',
+    defaultMessage: 'Connecting your conversations',
   },
-  makingApplicationUsable: {
-    id: 'loading.makingApplicationUsable',
-    defaultMessage: 'Making application usable',
-  },
-  removingUnproductivePaywalls: {
-    id: 'loading.removingUnproductivePaywalls',
-    defaultMessage: 'Removing unproductive paywalls',
-  },
-  creatingCustomServerSoftware: {
-    id: 'loading.creatingCustomServerSoftware',
-    defaultMessage: 'Creating custom server software',
-  },
-  increasingProductivity: {
-    id: 'loading.increasingProductivity',
-    defaultMessage: 'Increasing productivity',
-  },
-  listeningToOurUserbase: {
-    id: 'loading.listeningToOurUserbase',
-    defaultMessage: 'Listening to our userbase',
-  },
-  fixingBugs: {
-    id: 'loading.fixingBugs',
-    defaultMessage: 'Fixing bugs',
+  connectingDescription: {
+    id: 'loading.translationAlmostReady',
+    defaultMessage: 'Cross-language conversations will be ready in a moment.',
   },
 });
 
@@ -48,81 +25,48 @@ interface IProps extends WithStylesProps<typeof styles>, WrappedComponentProps {
   texts?: string[];
 }
 
-interface IState {
-  step: number;
-}
+const AppLoader = ({ classes, intl, theme, texts }: IProps): ReactElement => {
+  const title = texts?.[0] ?? intl.formatMessage(messages.connectingTitle);
 
-class AppLoader extends Component<IProps, IState> {
-  interval: NodeJS.Timeout | null = null;
+  return (
+    <main className={classes.shell} aria-busy="true">
+      <div className={classes.ambientGlow} aria-hidden="true" />
+      <section className={classes.content}>
+        {!texts && (
+          <div className={classes.conversation} aria-hidden="true">
+            <span className={classes.incomingBubble}>Hello</span>
+            <span
+              className={classes.exchangeIcon}
+              style={{ color: theme.brandPrimary }}
+            >
+              ⇄
+            </span>
+            <span className={classes.outgoingBubble}>你好</span>
+          </div>
+        )}
 
-  constructor(props: IProps) {
-    super(props);
+        <h1 className={classes.title} role="status" aria-live="polite">
+          {title}
+        </h1>
+        {!texts && (
+          <p className={classes.description}>
+            {intl.formatMessage(messages.connectingDescription)}
+          </p>
+        )}
 
-    this.state = {
-      step: 0,
-    };
-  }
+        <div className={classes.loadingDots} aria-hidden="true">
+          <span className={classes.dot} />
+          <span className={classes.dot} />
+          <span className={classes.dot} />
+        </div>
 
-  componentDidMount(): void {
-    const { intl } = this.props;
-    const defaultTexts = shuffleArray([
-      intl.formatMessage(messages.addingFreeFeatures),
-      intl.formatMessage(messages.makingApplicationUsable),
-      intl.formatMessage(messages.removingUnproductivePaywalls),
-      intl.formatMessage(messages.creatingCustomServerSoftware),
-      intl.formatMessage(messages.increasingProductivity),
-      intl.formatMessage(messages.listeningToOurUserbase),
-      intl.formatMessage(messages.fixingBugs),
-    ]);
-    const texts = this.props.texts || defaultTexts;
-
-    this.interval = setInterval(() => {
-      this.setState((prevState: { step: number }) => ({
-        step: prevState.step === texts.length - 1 ? 0 : prevState.step + 1,
-      }));
-    }, 2500);
-  }
-
-  componentWillUnmount(): void {
-    if (this.interval) {
-      clearInterval(this.interval);
-    }
-  }
-
-  render(): ReactElement {
-    const { classes, theme, intl } = this.props;
-    const { step } = this.state;
-
-    const defaultTexts = shuffleArray([
-      intl.formatMessage(messages.addingFreeFeatures),
-      intl.formatMessage(messages.makingApplicationUsable),
-      intl.formatMessage(messages.removingUnproductivePaywalls),
-      intl.formatMessage(messages.creatingCustomServerSoftware),
-      intl.formatMessage(messages.increasingProductivity),
-      intl.formatMessage(messages.listeningToOurUserbase),
-      intl.formatMessage(messages.fixingBugs),
-    ]);
-    const texts = this.props.texts || defaultTexts;
-
-    return (
-      <FullscreenLoader
-        className={classes.component}
-        spinnerColor={theme.colorAppLoaderSpinner}
-      >
-        {texts.map((text, i) => (
-          <span
-            key={text}
-            className={classnames({
-              [`${classes.slogan}`]: true,
-              [`${classes.visible}`]: step === i,
-            })}
-          >
-            {text}
-          </span>
-        ))}
-      </FullscreenLoader>
-    );
-  }
-}
+        <div className={classes.brand} aria-hidden="true">
+          <span className={classes.brandMark}>F</span>
+          <span>FreeTrans</span>
+        </div>
+      </section>
+    </main>
+  );
+};
 
 export default injectIntl(withStyles(styles, { injectTheme: true })(AppLoader));

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <title>Ferdium</title>
@@ -12,13 +12,46 @@
       media="(prefers-reduced-motion: no-preference)"
     />
     <script>
-      require("./app.js")
+      require('./app.js');
     </script>
-
   </head>
   <body>
     <div class="dev-warning">DEV MODE</div>
-    <div id="root"></div>
+    <div id="root">
+      <main
+        class="startup-loading-screen"
+        aria-busy="true"
+        role="status"
+        aria-live="polite"
+      >
+        <section class="startup-loading-content">
+          <div class="startup-loading-conversation" aria-hidden="true">
+            <span
+              class="startup-loading-bubble startup-loading-bubble--incoming"
+            >
+              Hello
+            </span>
+            <span class="startup-loading-exchange">⇄</span>
+            <span
+              class="startup-loading-bubble startup-loading-bubble--outgoing"
+            >
+              你好
+            </span>
+          </div>
+          <h1>正在连接你的会话</h1>
+          <p>准备好后即可开始跨语言交流</p>
+          <div class="startup-loading-dots" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="startup-loading-brand" aria-hidden="true">
+            <span>F</span>
+            FreeTrans
+          </div>
+        </section>
+      </main>
+    </div>
     <div id="portalContainer"></div>
     <script>
       document

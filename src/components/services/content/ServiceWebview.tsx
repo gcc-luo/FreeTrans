@@ -8,6 +8,7 @@ import type ServiceModel from '../../../models/Service';
 import type { RealStores } from '../../../stores';
 import {
   getResponsiveZoomScale,
+  MIN_RESPONSIVE_ZOOM_SCALE,
   resolveBaseZoomFactor,
 } from './responsive-zoom';
 
@@ -115,7 +116,10 @@ class ServiceWebview extends Component<IProps> {
 
     const currentZoomFactor = (webview.view as any).getZoomFactor?.() ?? 1;
     if (this.baseZoomFactor === undefined) {
-      this.baseZoomFactor = currentZoomFactor;
+      // Recover zoom factors saved by the old responsive rule, which could
+      // shrink service content to 20% and make messages unreadable.
+      this.baseZoomFactor =
+        currentZoomFactor < MIN_RESPONSIVE_ZOOM_SCALE ? 1 : currentZoomFactor;
     } else if (this.lastResponsiveZoomFactor !== undefined) {
       this.baseZoomFactor = resolveBaseZoomFactor(
         currentZoomFactor,
@@ -218,6 +222,9 @@ class ServiceWebview extends Component<IProps> {
           }
         }}
         autosize
+        // Navigation restores Chromium's saved per-site zoom after attachment.
+        // Wait for DOM readiness so the responsive zoom uses the restored value.
+        onDomReady={this.observeResponsiveWidth}
         src={service.url}
         preload={preloadScript}
         partition={
@@ -231,7 +238,6 @@ class ServiceWebview extends Component<IProps> {
           // This prevents us from immediately attaching listeners such as `did-stop-load`:
           // https://github.com/ferdium/ferdium-app/issues/157
           setTimeout(() => {
-            this.observeResponsiveWidth();
             setWebviewReference({
               serviceId: service.id,
               webview: this.webview.view,

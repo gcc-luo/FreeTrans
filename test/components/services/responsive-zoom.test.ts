@@ -8,12 +8,12 @@ describe('service responsive zoom', () => {
     expect(getResponsiveZoomScale(430, false)).toBe(1);
   });
 
-  it('fits a full-width conversation at the narrow layout shown with the translator open', () => {
-    expect(getResponsiveZoomScale(430, true)).toBeCloseTo(430 / 1400);
+  it('keeps narrow service content readable with the translator open', () => {
+    expect(getResponsiveZoomScale(430, true)).toBe(0.85);
   });
 
-  it('scales down wide content before it reaches the panel', () => {
-    expect(getResponsiveZoomScale(920, true)).toBeCloseTo(920 / 1400);
+  it('only applies a small scale adjustment at medium widths', () => {
+    expect(getResponsiveZoomScale(920, true)).toBeCloseTo(0.92);
   });
 
   it('does not enlarge the service when enough space is available', () => {

@@ -33,6 +33,7 @@ initializeRemote();
 import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_SHORTCUTS,
+  STARTUP_LOADING_BACKGROUND_COLOR,
   DEFAULT_WINDOW_OPTIONS,
 } from './config';
 
@@ -78,7 +79,6 @@ import { translateTo } from './helpers/translation-helpers';
 import { openExternalUrl } from './helpers/url-helpers';
 import userAgent from './helpers/userAgent-helpers';
 import generatedTranslations from './i18n/translations';
-import { darkThemeGrayDarkest } from './themes/legacy';
 
 const debug = require('./preload-safe-debug')('Ferdium:App');
 
@@ -89,6 +89,7 @@ app.userAgentFallback = userAgent();
 // Keep a global reference of the window object, if you don't, the window will
 // be closed automatically when the JavaScript object is garbage collected.
 let mainWindow: BrowserWindow | undefined;
+let mainWindowReadyToShow = false;
 let willQuitApp = false;
 let overrideAppQuitForUpdate = false;
 
@@ -373,7 +374,11 @@ if (gotTheLock) {
     // Someone tried to run a second instance, we should focus our window.
     if (mainWindow) {
       if (!mainWindow.isVisible()) {
-        mainWindow.show();
+        if (mainWindowReadyToShow) {
+          mainWindow.show();
+        } else {
+          mainWindow.once('ready-to-show', () => mainWindow?.show());
+        }
       }
       if (mainWindow.isMinimized()) {
         mainWindow.restore();
@@ -453,15 +458,7 @@ const createWindow = () => {
   }
 
   // Create the browser window.
-  const backgroundColor = retrieveSettingValue(
-    'darkMode',
-    DEFAULT_APP_SETTINGS.darkMode,
-  )
-    ? darkThemeGrayDarkest
-    : (retrieveSettingValue(
-        'accentColor',
-        DEFAULT_APP_SETTINGS.accentColor,
-      ) as string);
+  const backgroundColor = STARTUP_LOADING_BACKGROUND_COLOR;
 
   const linuxMainWindowConf = {
     icon: asarPath(
@@ -493,6 +490,18 @@ const createWindow = () => {
       webviewTag: true,
     },
     ...(isLinux ? linuxMainWindowConf : {}),
+  });
+
+  mainWindowReadyToShow = false;
+  const startMinimized = retrieveSettingValue(
+    'startMinimized',
+    DEFAULT_APP_SETTINGS.startMinimized,
+  );
+  mainWindow.once('ready-to-show', () => {
+    mainWindowReadyToShow = true;
+    if (!startMinimized) {
+      mainWindow?.show();
+    }
   });
 
   enableWebContents(mainWindow.webContents);
@@ -703,12 +712,8 @@ const createWindow = () => {
     return { action: 'deny' };
   });
 
-  if (
-    retrieveSettingValue('startMinimized', DEFAULT_APP_SETTINGS.startMinimized)
-  ) {
+  if (startMinimized) {
     mainWindow.hide();
-  } else {
-    mainWindow.show();
   }
 
   app.whenReady().then(() => {

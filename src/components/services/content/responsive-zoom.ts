@@ -1,8 +1,12 @@
+export const MIN_RESPONSIVE_ZOOM_SCALE = 0.85;
+
 export function getResponsiveZoomScale(
   width: number,
   translatorPanelOpen: boolean,
 ): number {
-  return translatorPanelOpen ? Math.max(0.2, Math.min(1, width / 1400)) : 1;
+  return translatorPanelOpen
+    ? Math.max(MIN_RESPONSIVE_ZOOM_SCALE, Math.min(1, width / 1000))
+    : 1;
 }
 
 export function resolveBaseZoomFactor(

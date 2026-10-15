@@ -16,6 +16,7 @@ import FeatureStore from '../utils/FeatureStore';
 import { translatorActions } from './actions';
 import {
   DEFAULT_TRANSLATOR_SETTINGS,
+  resolveTranslationPlatformForRecipeId,
   TRANSLATOR_DEFAULT_WIDTH,
   TRANSLATOR_MIN_WIDTH,
 } from './constants';
@@ -130,22 +131,8 @@ export default class MessageTranslatorStore extends FeatureStore {
     const recipeId = String(service?.recipe?.id || '')
       .trim()
       .toLowerCase();
-    if (recipeId === 'whatsapp') {
-      return 'whatsapp';
-    }
-    if (recipeId === 'telegram') {
-      return 'telegram';
-    }
-    if (
-      recipeId === 'googlechat' ||
-      recipeId === 'google-chat' ||
-      recipeId === 'google_chat' ||
-      recipeId === 'hangoutschat' ||
-      recipeId === 'hangouts' ||
-      recipeId === 'googlechatservice'
-    ) {
-      return 'googlechat';
-    }
+    const recipePlatform = resolveTranslationPlatformForRecipeId(recipeId);
+    if (recipePlatform) return recipePlatform;
 
     const serviceUrl = String(service?.url || service?.customUrl || '')
       .trim()

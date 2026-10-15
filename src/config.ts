@@ -533,6 +533,7 @@ export const SPLIT_COLUMNS_MIN = 1;
 export const SPLIT_COLUMNS_MAX = 5;
 
 export const DEFAULT_LOADER_COLOR = '#FFFFFF';
+export const STARTUP_LOADING_BACKGROUND_COLOR = '#211B35';
 
 export const DEFAULT_APP_SETTINGS = {
   autoLaunchOnStart: false,

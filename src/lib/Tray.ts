@@ -36,6 +36,8 @@ export default class TrayIcon {
 
   currentLocale: string = 'en-US';
 
+  mainWindowReadyToShow = false;
+
   constructor() {
     ipcMain.on('initialAppSettings', (_, appSettings) => {
       this._updateTrayMenu(appSettings);
@@ -46,6 +48,10 @@ export default class TrayIcon {
 
     const [firstWindow] = BrowserWindow.getAllWindows();
     this.mainWindow = firstWindow;
+
+    this.mainWindow.once('ready-to-show', () => {
+      this.mainWindowReadyToShow = true;
+    });
 
     // listen to window events to be able to set correct string
     // to tray menu ('Hide FreeTrans' / 'Show FreeTrans')
@@ -190,8 +196,17 @@ export default class TrayIcon {
         mainWindow.hide();
       }
     } else {
-      mainWindow.show();
-      mainWindow.focus();
+      const showAndFocus = () => {
+        if (mainWindow.isDestroyed()) return;
+        mainWindow.show();
+        mainWindow.focus();
+      };
+
+      if (this.mainWindowReadyToShow) {
+        showAndFocus();
+      } else {
+        mainWindow.once('ready-to-show', showAndFocus);
+      }
     }
   }
 

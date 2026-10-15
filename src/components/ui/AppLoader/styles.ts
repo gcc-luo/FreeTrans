@@ -1,22 +1,150 @@
-const sloganTransition = window?.matchMedia(
-  '(prefers-reduced-motion: no-preference)',
-)
-  ? 'opacity 1s ease'
-  : 'none';
+import type { Theme } from '../../../themes';
+import { STARTUP_LOADING_BACKGROUND_COLOR } from '../../../config';
 
-export default {
-  component: {
-    color: '#FFF',
-  },
-  slogan: {
-    display: 'block',
-    opacity: 0,
-    transition: sloganTransition,
-    position: 'absolute',
-    textAlign: 'center',
+export default (theme: Theme) => ({
+  shell: {
+    position: 'relative',
+    display: 'grid',
     width: '100%',
+    minHeight: '100vh',
+    overflow: 'hidden',
+    placeItems: 'center',
+    color: '#FFF',
+    background: `linear-gradient(145deg, ${STARTUP_LOADING_BACKGROUND_COLOR} 0%, #2B2448 58%, #201B35 100%)`,
+    fontFamily: 'inherit',
   },
-  visible: {
-    opacity: 1,
+  ambientGlow: {
+    position: 'absolute',
+    top: 'calc(50% - 250px)',
+    left: 'calc(50% - 280px)',
+    width: 560,
+    height: 500,
+    borderRadius: '50%',
+    background: `radial-gradient(ellipse, ${theme.brandPrimary}22 0%, transparent 68%)`,
+    filter: 'blur(12px)',
+    pointerEvents: 'none',
   },
-};
+  content: {
+    position: 'relative',
+    display: 'flex',
+    width: 'min(620px, calc(100% - 40px))',
+    flexDirection: 'column',
+    alignItems: 'center',
+    padding: '48px 24px',
+    textAlign: 'center',
+  },
+  conversation: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 38,
+    animation: '$floatIn 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+  },
+  incomingBubble: {
+    padding: '14px 20px',
+    border: '1px solid rgba(255, 255, 255, 0.11)',
+    borderRadius: '17px 17px 17px 5px',
+    color: 'rgba(255, 255, 255, 0.92)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+    fontSize: 18,
+  },
+  exchangeIcon: {
+    fontSize: 25,
+    fontWeight: 300,
+    opacity: 0.95,
+  },
+  outgoingBubble: {
+    padding: '14px 20px',
+    border: '1px solid rgba(255, 255, 255, 0.16)',
+    borderRadius: '17px 17px 5px 17px',
+    color: '#FFF',
+    backgroundColor: `${theme.brandPrimary}66`,
+    boxShadow: `0 12px 32px ${theme.brandPrimary}22`,
+    fontSize: 18,
+  },
+  title: {
+    margin: 0,
+    color: '#FFF',
+    fontSize: 24,
+    fontWeight: 650,
+    letterSpacing: '-0.025em',
+  },
+  description: {
+    margin: '12px 0 0',
+    color: 'rgba(255, 255, 255, 0.63)',
+    fontSize: 14,
+    lineHeight: 1.6,
+  },
+  loadingDots: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 26,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    backgroundColor: theme.brandPrimary,
+    animation: '$dotPulse 1.2s ease-in-out infinite',
+    '&:nth-child(2)': { animationDelay: '150ms' },
+    '&:nth-child(3)': { animationDelay: '300ms' },
+  },
+  brand: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 72,
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 12,
+    fontWeight: 600,
+    letterSpacing: '0.04em',
+  },
+  brandMark: {
+    display: 'grid',
+    width: 22,
+    height: 22,
+    placeItems: 'center',
+    borderRadius: 7,
+    color: '#FFF',
+    backgroundColor: `${theme.brandPrimary}88`,
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  '@keyframes dotPulse': {
+    '0%, 60%, 100%': { transform: 'translateY(0)', opacity: 0.42 },
+    '30%': { transform: 'translateY(-5px)', opacity: 1 },
+  },
+  '@keyframes floatIn': {
+    from: { transform: 'translateY(12px)', opacity: 0 },
+    to: { transform: 'translateY(0)', opacity: 1 },
+  },
+  '@media (max-width: 560px)': {
+    content: {
+      padding: '32px 20px',
+    },
+    conversation: {
+      gap: 10,
+      marginBottom: 30,
+    },
+    incomingBubble: {
+      padding: '12px 16px',
+      fontSize: 16,
+    },
+    outgoingBubble: {
+      padding: '12px 16px',
+      fontSize: 16,
+    },
+    title: {
+      fontSize: 21,
+    },
+    brand: {
+      marginTop: 56,
+    },
+  },
+  '@media (prefers-reduced-motion: reduce)': {
+    conversation: { animation: 'none' },
+    dot: { animation: 'none', opacity: 0.8 },
+  },
+});
