@@ -361,17 +361,12 @@
   }
 
   .sidebar__brand-mark {
-    align-items: center;
-    background: $theme-brand-primary;
     border-radius: 12px;
-    box-shadow: 0 8px 18px rgba($theme-brand-primary, 0.2);
-    color: #fff;
     display: inline-flex;
     flex: 0 0 38px;
-    font-size: 22px;
-    font-weight: 700;
     height: 38px;
-    justify-content: center;
+    object-fit: cover;
+    width: 38px;
   }
 
   .sidebar__brand-name {

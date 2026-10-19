@@ -122,7 +122,7 @@ class Services extends Component<IProps, IState> {
           <Appear transitionName="slideUp">
             <div className="services__no-service">
               <img
-                src="./assets/images/logo-beard-only.svg"
+                src="./assets/images/icons/256x256.png"
                 alt="Logo"
                 style={{ maxHeight: '50vh' }}
               />

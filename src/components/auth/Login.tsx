@@ -126,7 +126,11 @@ class Login extends Component<IProps> {
       <div className="auth__container">
         <form className="franz-form auth__form" onSubmit={e => this.submit(e)}>
           <Link to="/auth/welcome">
-            <img src="./assets/images/logo.svg" className="auth__logo" alt="" />
+            <img
+              src="./assets/images/icons/256x256.png"
+              className="auth__logo"
+              alt=""
+            />
           </Link>
           <H1>{intl.formatMessage(messages.headline)}</H1>
           {isTokenExpired && (

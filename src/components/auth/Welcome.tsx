@@ -62,7 +62,7 @@ class Welcome extends Component<IProps> {
       <div className="welcome">
         <div className="welcome__content">
           <img
-            src="./assets/images/logo.svg"
+            src="./assets/images/icons/256x256.png"
             className="welcome__logo"
             alt=""
           />

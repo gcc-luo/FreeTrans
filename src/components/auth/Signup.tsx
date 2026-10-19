@@ -136,7 +136,7 @@ class Signup extends Component<IProps> {
           >
             <Link to="/auth/welcome">
               <img
-                src="./assets/images/logo.svg"
+                src="./assets/images/icons/256x256.png"
                 className="auth__logo"
                 alt=""
               />

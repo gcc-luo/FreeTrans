@@ -460,13 +460,9 @@ const createWindow = () => {
   // Create the browser window.
   const backgroundColor = STARTUP_LOADING_BACKGROUND_COLOR;
 
-  const linuxMainWindowConf = {
-    icon: asarPath(
-      join(
-        isDevMode ? `${__dirname}../src/` : __dirname,
-        'assets/images/icons/256x256.png',
-      ),
-    ),
+  const iconDirectory = isDevMode ? join(__dirname, '..', 'src') : __dirname;
+  const platformMainWindowConf = {
+    icon: asarPath(join(iconDirectory, 'assets/images/icons/256x256.png')),
   };
 
   mainWindow = new BrowserWindow({
@@ -489,7 +485,7 @@ const createWindow = () => {
       contextIsolation: false,
       webviewTag: true,
     },
-    ...(isLinux ? linuxMainWindowConf : {}),
+    ...(isLinux || isWindows ? platformMainWindowConf : {}),
   });
 
   mainWindowReadyToShow = false;

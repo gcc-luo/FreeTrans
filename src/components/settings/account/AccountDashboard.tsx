@@ -153,7 +153,10 @@ class AccountDashboard extends Component<IProp> {
                       <div className="account">
                         <div className="account__box account__box--flex">
                           <div className="account__avatar">
-                            <img src="./assets/images/logo.svg" alt="" />
+                            <img
+                              src="./assets/images/icons/256x256.png"
+                              alt=""
+                            />
                           </div>
                           <div className="account__info">
                             <H1>

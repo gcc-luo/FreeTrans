@@ -378,7 +378,7 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
         <div className="translator-panel__header translator-panel__header--compact">
           <div className="translator-panel__title">
             <img
-              src="./assets/images/logo-beard-only.svg"
+              src="./assets/images/icons/256x256.png"
               alt="Translator logo"
               className="translator-panel__logo"
             />

@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -70,6 +71,11 @@ if (process.platform === 'darwin') {
     );
     writeFileSync(runtimeStampPath, runtimeStamp);
   }
+
+  copyFileSync(
+    join(projectDirectory, 'build-helpers', 'images', 'icon.icns'),
+    join(devAppPath, 'Contents', 'Resources', 'electron.icns'),
+  );
 
   executablePath = devExecutablePath;
 }

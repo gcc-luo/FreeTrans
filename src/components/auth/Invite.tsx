@@ -159,7 +159,11 @@ class Invite extends Component<IProps, IState> {
 
         <form className="franz-form auth__form" onSubmit={e => this.submit(e)}>
           {!embed && (
-            <img src="./assets/images/logo.svg" className="auth__logo" alt="" />
+            <img
+              src="./assets/images/icons/256x256.png"
+              className="auth__logo"
+              alt=""
+            />
           )}
           <H1 className={embed ? 'invite__embed' : ''}>
             {intl.formatMessage(messages.headline)}

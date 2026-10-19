@@ -53,7 +53,12 @@ class Sidebar extends Component<IProps> {
       <aside className="sidebar sidebar--freetrans">
         <div className="sidebar__top">
           <div className="sidebar__brand">
-            <span className="sidebar__brand-mark">F</span>
+            <img
+              src="./assets/images/icons/256x256.png"
+              className="sidebar__brand-mark"
+              alt=""
+              aria-hidden="true"
+            />
             <span className="sidebar__brand-name">FreeTrans</span>
           </div>
 

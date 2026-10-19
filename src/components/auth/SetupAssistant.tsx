@@ -212,7 +212,11 @@ class SetupAssistant extends Component<IProps, IState> {
           </Appear>
         )}
 
-        <img src="./assets/images/logo.svg" className="auth__logo" alt="" />
+        <img
+          src="./assets/images/icons/256x256.png"
+          className="auth__logo"
+          alt=""
+        />
         <H1>{intl.formatMessage(messages.headline)}</H1>
         <H2>{intl.formatMessage(messages.subHeadline)}</H2>
         <div className={classnames('grid', classes.servicesGrid)}>
