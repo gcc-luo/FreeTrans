@@ -26,6 +26,7 @@ function injectedScript() {
   expect(end).toBeGreaterThan(start);
   return source
     .slice(start, end)
+    .replaceAll('\\\\', '\\')
     .replace(`\${initialSettingsJson}`, JSON.stringify(settings))
     .replace(`\${interceptorPlatformJson}`, JSON.stringify('whatsapp'))
     .replaceAll(`\${serviceId}`, 'service-whatsapp');
@@ -46,6 +47,7 @@ async function setupWhatsAppSimulation(page, failTranslation = false) {
   await page.evaluate(fail => {
     const handlers = new Map();
     const calls = [];
+    const sentOriginals = new Map();
     const ipcRenderer = {
       on(channel, handler) {
         handlers.set(channel, [...(handlers.get(channel) || []), handler]);
@@ -68,8 +70,14 @@ async function setupWhatsAppSimulation(page, failTranslation = false) {
             ? 'zh'
             : 'en';
         }
-        if (channel === 'translator:lookup-original')
-          return { found: false, text: '' };
+        if (channel === 'translator:save-outgoing-original') {
+          sentOriginals.set(payload.translatedText, payload.originalText);
+          return { saved: true };
+        }
+        if (channel === 'translator:lookup-original') {
+          const text = sentOriginals.get(payload.translatedText) || '';
+          return { found: !!text, text };
+        }
         return '';
       },
       sendToHost(channel, payload) {
@@ -160,5 +168,54 @@ test.describe('WhatsApp translator e2e simulation', () => {
 
     await expect(composer).toContainText('你好，失败草稿');
     await expect(page.locator('.message-out')).toHaveCount(0);
+  });
+
+  test('编辑译文后页面重绘仍恢复原文', async ({ page }) => {
+    await setupWhatsAppSimulation(page);
+    const composer = page.locator('footer [contenteditable="true"]');
+    await composer.click();
+    await page.keyboard.type('你好，重绘');
+    await page.locator('button[data-testid="compose-btn-send"]').click();
+    await page
+      .getByRole('textbox', { name: '将发送给对方的译文' })
+      .fill('Hola amigo');
+    await page
+      .locator('[data-ferdium-translation-confirm] button', {
+        hasText: '发送译文',
+      })
+      .click();
+    await expect(page.locator('.message-out')).toContainText('Hola amigo');
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__translatorTestCalls.filter(
+              call => call.channel === 'translator:save-outgoing-original',
+            ).length,
+        ),
+      )
+      .toBe(1);
+
+    await page.evaluate(() => {
+      const row = document.querySelector('.message-out');
+      const replacement = document.createElement('div');
+      replacement.className = 'message-out';
+      replacement.innerHTML =
+        '<span class="selectable-text copyable-text">Hola amigo</span>';
+      row.replaceWith(replacement);
+    });
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.__translatorTestCalls.filter(
+              call => call.channel === 'translator:lookup-original',
+            ).length,
+        ),
+      )
+      .toBeGreaterThan(0);
+
+    await expect(page.locator('.message-out')).toContainText('你好，重绘');
   });
 });

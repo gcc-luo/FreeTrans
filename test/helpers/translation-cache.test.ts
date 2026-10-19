@@ -54,6 +54,32 @@ describe('translation-cache', () => {
     expect(hit).toBe('bonjour');
   });
 
+  it('stores the final sent text without replacing the reusable translation', () => {
+    const cacheFilePath = join(tempDir, 'translation-cache.json');
+    const request = {
+      serviceId: 'whatsapp',
+      sourceText: '你好',
+      fromLanguage: 'zh',
+      toLanguage: 'en',
+      engine: 'Baidu',
+    };
+    const cache = getTranslationCache(cacheFilePath, 100);
+    cache?.save(request, 'Hello');
+    cache?.saveOutgoingOriginal(request, 'Hello there');
+
+    expect(cache?.lookup(request)).toBe('Hello');
+    clearTranslationCacheInstancesForTests();
+    expect(
+      getTranslationCache(cacheFilePath, 100)?.lookupOriginalByTranslatedText({
+        serviceId: 'whatsapp',
+        translatedText: 'Hello there',
+        fromLanguage: 'zh',
+        toLanguage: 'en',
+        engine: 'Baidu',
+      }),
+    ).toBe('你好');
+  });
+
   it('clears cached conversation text from memory and disk', () => {
     const cacheFilePath = join(tempDir, 'translation-cache.json');
     const cache = getTranslationCache(cacheFilePath, 100);

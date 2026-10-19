@@ -25,6 +25,7 @@ interface TranslationCacheKeyInput {
 
 interface TranslationCacheEntry extends TranslationCacheKeyInput {
   key: string;
+  kind?: 'outgoing';
   translatedText: string;
   usedEngine?: string;
   updatedAt: number;
@@ -152,7 +153,7 @@ export class TranslationCache {
         languageMatches(entry.toLanguage, normalizedToLanguage);
 
       if (serviceMatches && translatedMatches && toLanguageMatches) {
-        let score = 0;
+        let score = entry.kind === 'outgoing' ? 8 : 0;
         if (normalizedToLanguage) {
           score += 4;
         }
@@ -218,6 +219,33 @@ export class TranslationCache {
       updatedAt: now,
     });
 
+    this.pruneIfNeeded();
+    this.persistToDisk();
+  }
+
+  saveOutgoingOriginal(
+    input: TranslationCacheKeyInput,
+    translatedText: string,
+  ) {
+    const sourceText = normalizeText(input.sourceText);
+    const sentText = normalizeText(translatedText);
+    if (!sourceText || !sentText || sourceText === sentText) return;
+
+    const now = Date.now();
+    const key = `outgoing:${buildCacheKey(input)}:${createHash('sha1').update(sentText, 'utf8').digest('hex')}`;
+    const existing = this.entryByKey.get(key);
+    this.entryByKey.set(key, {
+      key,
+      kind: 'outgoing',
+      serviceId: String(input.serviceId || '').trim(),
+      sourceText,
+      fromLanguage: normalizeLanguage(input.fromLanguage),
+      toLanguage: normalizeLanguage(input.toLanguage),
+      engine: normalizeLanguage(input.engine),
+      translatedText: sentText,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    });
     this.pruneIfNeeded();
     this.persistToDisk();
   }

@@ -4365,6 +4365,24 @@ export default class MessageTranslatorStore extends FeatureStore {
             const outgoingRowCountBeforeSend = getOutgoingMessageRows().length;
             nativeSendAttempted = true;
             await triggerNativeSend(preferClick, finalSendText, original, operationId);
+            if (ipcRenderer && typeof ipcRenderer.invoke === 'function') {
+              try {
+                const savedOutgoing = await ipcRenderer.invoke('translator:save-outgoing-original', {
+                  serviceId: '${serviceId}',
+                  originalText: original,
+                  translatedText: finalSendText,
+                  fromLanguage: preferredSourceLanguage,
+                  toLanguage: state.settings.targetLanguage || '',
+                  translatorEngine: state.settings.translatorEngine || 'Google',
+                });
+                if (savedOutgoing?.saved) {
+                  state.outgoingHistoryLookupCache.clear();
+                  scheduleOutgoingHistoryScan('outgoing-saved', 0);
+                }
+              } catch (error) {
+                console.warn('[Ferdium Translator] save outgoing original failed', error);
+              }
+            }
             if (!isGoogleChatProfile()) {
               queueLocalPreviewDecoration(
                 finalSendText,

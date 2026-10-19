@@ -1104,6 +1104,55 @@ ipcMain.on(
 );
 
 ipcMain.handle(
+  'translator:save-outgoing-original',
+  async (
+    _event,
+    {
+      serviceId,
+      originalText,
+      translatedText,
+      fromLanguage,
+      toLanguage,
+      translatorEngine,
+    }: {
+      serviceId?: string;
+      originalText?: string;
+      translatedText?: string;
+      fromLanguage?: string;
+      toLanguage?: string;
+      translatorEngine?: string;
+    },
+  ) => {
+    if (settings.get('translationCacheEnabled') === false)
+      return { saved: false };
+    const sourceText = String(originalText || '').trim();
+    const sentText = String(translatedText || '').trim();
+    if (!serviceId || !sourceText || !sentText || sourceText === sentText)
+      return { saved: false };
+    try {
+      const cache = getTranslationCache(
+        TRANSLATION_RESULT_CACHE_FILE,
+        TRANSLATION_RESULT_CACHE_MAX_ENTRIES,
+      );
+      cache?.saveOutgoingOriginal(
+        {
+          serviceId,
+          sourceText,
+          fromLanguage: String(fromLanguage || ''),
+          toLanguage: String(toLanguage || ''),
+          engine: String(translatorEngine || 'Google'),
+        },
+        sentText,
+      );
+      return { saved: !!cache };
+    } catch (error) {
+      debug('translator:save-outgoing-original failed', { error });
+      return { saved: false };
+    }
+  },
+);
+
+ipcMain.handle(
   'translator:lookup-original',
   async (
     _event,
