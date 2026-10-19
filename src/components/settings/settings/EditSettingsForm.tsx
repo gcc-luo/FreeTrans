@@ -332,6 +332,7 @@ interface IProps extends WrappedComponentProps {
   noUpdateAvailable: boolean;
   updateIsReadyToInstall: boolean;
   updateFailed: boolean;
+  updateErrorMessage: string;
   isClearingAllCache: boolean;
   isTodosActivated: boolean;
   isTwoFactorAutoCatcherEnabled: boolean;
@@ -453,6 +454,7 @@ class EditSettingsForm extends Component<IProps, IState> {
       noUpdateAvailable,
       updateIsReadyToInstall,
       updateFailed,
+      updateErrorMessage,
       isClearingAllCache,
       onClearAllCache,
       getCacheSize,
@@ -482,7 +484,7 @@ class EditSettingsForm extends Component<IProps, IState> {
         )}
         {updateFailed && (
           <Infobox type="danger" icon="alert">
-            &nbsp;An error occurred (check the console for more details)
+            &nbsp;{updateErrorMessage || 'An error occurred (check the console for more details)'}
           </Infobox>
         )}
       </div>

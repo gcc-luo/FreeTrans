@@ -123,6 +123,8 @@ export default class AppStore extends TypedStore {
 
   @observable updateVersion = '';
 
+  @observable updateErrorMessage = '';
+
   @observable locale = ferdiumLocale;
 
   @observable isSystemMuteOverridden = false;
@@ -266,6 +268,7 @@ export default class AppStore extends TypedStore {
         if (data.error) {
           if (data.error.message?.startsWith('404')) {
             this.updateStatus = this.updateStatusTypes.NOT_AVAILABLE;
+            this.updateErrorMessage = '';
             console.warn(
               'Updater warning: there seems to be unpublished pre-release(s) available on GitHub',
               data.error,
@@ -273,6 +276,8 @@ export default class AppStore extends TypedStore {
           } else {
             console.error('Updater error:', data.error);
             this.updateStatus = this.updateStatusTypes.FAILED;
+            this.updateErrorMessage =
+              data.error.message || 'An unknown error occurred';
           }
         }
       }
@@ -591,6 +596,7 @@ export default class AppStore extends TypedStore {
     ) {
       debug('_checkForUpdates: sending event to autoUpdate:check');
       this.updateStatus = this.updateStatusTypes.CHECKING;
+      this.updateErrorMessage = '';
       ipcRenderer.send('autoUpdate', {
         action: 'check',
       });

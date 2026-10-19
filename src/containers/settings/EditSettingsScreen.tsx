@@ -1317,6 +1317,7 @@ class EditSettingsScreen extends Component<
       updateStatus,
       updateVersion,
       updateStatusTypes,
+      updateErrorMessage,
       isClearingAllCache,
       isLockingFeatureEnabled,
     } = app;
@@ -1336,6 +1337,7 @@ class EditSettingsScreen extends Component<
           noUpdateAvailable={updateStatus === updateStatusTypes.NOT_AVAILABLE}
           updateIsReadyToInstall={updateStatus === updateStatusTypes.DOWNLOADED}
           updateFailed={updateStatus === updateStatusTypes.FAILED}
+          updateErrorMessage={updateErrorMessage}
           onSubmit={d => this.onSubmit(d)}
           getCacheSize={() => app.cacheSize}
           isClearingAllCache={isClearingAllCache}

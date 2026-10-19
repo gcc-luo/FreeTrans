@@ -71,10 +71,20 @@ export function getInstallerDownloadUrl(
       candidate.name.includes(release.tag_name.slice(1)) &&
       candidate.name.includes(`-${expectedArch}.`) &&
       candidate.name.endsWith(extension) &&
-      (platform === 'darwin' || candidate.name.includes('Installer')),
+      (platform === 'darwin' ||
+        candidate.name.includes('Installer') ||
+        candidate.name.includes('AutoSetup')),
   );
   if (!asset) {
-    throw new Error(`No ${platform}/${arch} installer in ${release.tag_name}.`);
+    const availableAssets = release.assets
+      ?.map(a => a.name)
+      .join(', ')
+      .replace(/, /g, '\n  ');
+    throw new Error(
+      `No ${platform}/${arch} installer found in ${release.tag_name}.\n` +
+        `Expected pattern: FreeTrans-*${release.tag_name.slice(1)}*-${expectedArch}.${extension}\n` +
+        `Available assets:\n  ${availableAssets ?? '(none)'}`,
+    );
   }
   const url = new URL(asset.browser_download_url);
   if (
