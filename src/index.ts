@@ -79,6 +79,7 @@ import { translateTo } from './helpers/translation-helpers';
 import { openExternalUrl } from './helpers/url-helpers';
 import userAgent from './helpers/userAgent-helpers';
 import generatedTranslations from './i18n/translations';
+import { SPELLCHECKER_LOCALES } from './i18n/languages';
 
 const debug = require('./preload-safe-debug')('Ferdium:App');
 
@@ -1399,9 +1400,30 @@ ipcMain.on('set-spellchecker-locales', (_e, { locale, serviceId }) => {
   const [defaultLocale] = serviceSession.getSpellCheckerLanguages();
   debug(`Spellchecker default locale is: ${defaultLocale}`);
 
-  const locales = [locale, defaultLocale, DEFAULT_APP_SETTINGS.fallbackLocale];
+  const validLocales = Object.keys(SPELLCHECKER_LOCALES).map(key =>
+    key.toLowerCase(),
+  );
+  const candidateLocales = [
+    locale,
+    defaultLocale,
+    DEFAULT_APP_SETTINGS.fallbackLocale,
+  ];
+  const locales = candidateLocales
+    .filter(Boolean)
+    .filter(
+      candidate =>
+        typeof candidate === 'string' &&
+        validLocales.includes(candidate.toLowerCase()),
+    );
+  if (locales.length === 0) {
+    locales.push('en-US');
+  }
   debug(`Setting spellchecker locales to: ${locales}`);
-  serviceSession.setSpellCheckerLanguages(locales);
+  try {
+    serviceSession.setSpellCheckerLanguages(locales);
+  } catch (err) {
+    debug('Failed to set spellchecker languages:', err);
+  }
 });
 
 ipcMain.handle('get-desktop-capturer-sources', () =>
