@@ -262,6 +262,14 @@ const messages = defineMessages({
     id: 'settings.app.updateStatusAvailable',
     defaultMessage: 'Update available',
   },
+  updateStatusDownloading: {
+    id: 'settings.app.updateStatusDownloading',
+    defaultMessage: 'Downloading update...',
+  },
+  updateStatusInstalling: {
+    id: 'settings.app.updateStatusInstalling',
+    defaultMessage: 'Installing update, the app will restart shortly...',
+  },
   updateAvailableSnap: {
     id: 'settings.app.updateAvailableSnap',
     defaultMessage: 'Update available. Please update via Snap Store.',
@@ -330,7 +338,9 @@ interface IProps extends WrappedComponentProps {
   isCheckingForUpdates: boolean;
   isUpdateAvailable: boolean;
   noUpdateAvailable: boolean;
+  isDownloading: boolean;
   updateIsReadyToInstall: boolean;
+  updateProgress: number;
   updateFailed: boolean;
   updateErrorMessage: string;
   isClearingAllCache: boolean;
@@ -452,6 +462,8 @@ class EditSettingsForm extends Component<IProps, IState> {
       isUseGrayscaleServicesEnabled,
       isUpdateAvailable,
       noUpdateAvailable,
+      isDownloading,
+      updateProgress,
       updateIsReadyToInstall,
       updateFailed,
       updateErrorMessage,
@@ -1223,6 +1235,23 @@ class EditSettingsForm extends Component<IProps, IState> {
                   {intl.formatMessage(messages.buttonInstallUpdate)}
                 </H2>
 
+                {isDownloading && (
+                  <div className="settings__update-progress">
+                    <p>{intl.formatMessage(messages.updateStatusDownloading)}</p>
+                    <div className="settings__update-progress-bar">
+                      <div
+                        className="settings__update-progress-fill"
+                        style={{ width: String(updateProgress) + '%' }}
+                      />
+                    </div>
+                    <p>{updateProgress}%</p>
+                  </div>
+                )}
+
+                {updateIsReadyToInstall && (
+                  <p>{intl.formatMessage(messages.updateStatusInstalling)}</p>
+                )}
+
                 {updateStatus}
 
                 <div className="settings__updates-actions">
@@ -1230,8 +1259,11 @@ class EditSettingsForm extends Component<IProps, IState> {
                     label={intl.formatMessage(messages.buttonInstallUpdate)}
                     onClick={installUpdate}
                     disabled={
-                      (!isUpdateAvailable && !updateIsReadyToInstall) || isSnap
+                      isDownloading ||
+                      (!isUpdateAvailable && !updateIsReadyToInstall) ||
+                      isSnap
                     }
+                    busy={isDownloading}
                   />
                 </div>
               </div>

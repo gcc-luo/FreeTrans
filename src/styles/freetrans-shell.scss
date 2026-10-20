@@ -696,6 +696,30 @@
       }
     }
 
+    .settings__update-progress {
+      margin: 16px 0;
+
+      p {
+        color: var(--freetrans-muted);
+        font-size: 13px;
+        margin: 4px 0;
+      }
+
+      .settings__update-progress-bar {
+        background: var(--freetrans-subtle-surface);
+        border-radius: 6px;
+        height: 8px;
+        overflow: hidden;
+        width: 100%;
+      }
+
+      .settings__update-progress-fill {
+        background: var(--freetrans-accent);
+        height: 100%;
+        transition: width 0.2s ease;
+      }
+    }
+
     .settings__updates-status {
       color: var(--freetrans-muted);
       font-size: 13px;

@@ -1,4 +1,7 @@
 import { app, type BrowserWindow, ipcMain, shell } from 'electron';
+import { join } from 'node:path';
+import { spawn } from 'node:child_process';
+import electronDl from 'electron-dl';
 import {
   getInstallerDownloadUrl,
   getLatestGitHubRelease,
@@ -7,8 +10,11 @@ import {
 
 const debug = require('../../preload-safe-debug')('FreeTrans:ipcApi:updates');
 
+const DOWNLOAD_DIR_NAME = 'updates';
+
 export default (params: { mainWindow: BrowserWindow; settings: any }) => {
   let pendingRelease: GitHubRelease | null = null;
+  let isDownloading = false;
 
   const MAX_RETRIES = 2;
 
@@ -43,7 +49,11 @@ export default (params: { mainWindow: BrowserWindow; settings: any }) => {
             : { available: false },
         );
       } else if (args.action === 'install') {
-        // If no pending release, auto-check first
+        if (isDownloading) {
+          debug('install already in progress, ignoring');
+          return;
+        }
+
         if (!pendingRelease) {
           debug('no pending release for install, auto-checking first');
           const allowPrerelease = Boolean(params.settings.app.get('beta'));
@@ -54,23 +64,75 @@ export default (params: { mainWindow: BrowserWindow; settings: any }) => {
             return;
           }
         }
+
         const url = getInstallerDownloadUrl(
           pendingRelease!,
           process.platform,
           process.arch,
         );
-        debug('opening installer download', url);
-        await shell.openExternal(url);
+        debug('downloading installer', url);
+
+        const downloadDirectory = join(app.getPath('userData'), DOWNLOAD_DIR_NAME);
+        const filename = url.split('/').pop() || 'freetrans-installer';
+
+        isDownloading = true;
+        event.sender.send('autoUpdate', { downloading: true });
+
+        let downloadedItem: { path: string } | null = null;
+        try {
+          const item = await electronDl.download(params.mainWindow, url, {
+            directory: downloadDirectory,
+            filename,
+            overwrite: true,
+            showBadge: false,
+            showProgressBar: false,
+            openFolderWhenDone: false,
+            onProgress: progress => {
+              event.sender.send('autoUpdate', {
+                progress: {
+                  percent: Math.round(progress.percent),
+                  transferredBytes: progress.transferredBytes,
+                  totalBytes: progress.totalBytes,
+                },
+              });
+            },
+          });
+          downloadedItem = item as unknown as { path: string };
+        } catch (downloadError) {
+          isDownloading = false;
+          throw downloadError;
+        }
+
+        isDownloading = false;
+        const installerPath = (downloadedItem as { path: string }).path;
+        debug('installer downloaded to', installerPath);
+
+        event.sender.send('autoUpdate', { downloaded: true });
+
+        if (process.platform === 'win32') {
+          debug('launching silent installer and quitting');
+          const child = spawn(installerPath, ['/S', '--updated'], {
+            detached: true,
+            stdio: 'ignore',
+          });
+          child.unref();
+          app.quit();
+        } else if (process.platform === 'darwin') {
+          debug('opening dmg for manual install');
+          await shell.openPath(installerPath);
+        }
       }
     } catch (error) {
+      isDownloading = false;
       const err = error as Error;
       debug('autoUpdate error:', err.message);
-      // Send a structured error with a user-friendly message
       let userMessage = err.message;
       if (err.message.includes('GitHub Releases request failed')) {
         userMessage = '无法连接 GitHub，请检查网络连接后重试';
       } else if (err.message.includes('No') && err.message.includes('installer found')) {
         userMessage = '未找到适用于当前系统的安装包，请联系开发者';
+      } else if (err.message.toLowerCase().includes('network') || err.message.toLowerCase().includes('download')) {
+        userMessage = '下载更新失败，请检查网络连接后重试';
       }
       event.sender.send('autoUpdate', { error: { message: userMessage } });
     }

@@ -94,6 +94,7 @@ export default class AppStore extends TypedStore {
     CHECKING: 'CHECKING',
     AVAILABLE: 'AVAILABLE',
     NOT_AVAILABLE: 'NOT_AVAILABLE',
+    DOWNLOADING: 'DOWNLOADING',
     DOWNLOADED: 'DOWNLOADED',
     FAILED: 'FAILED',
   };
@@ -122,6 +123,8 @@ export default class AppStore extends TypedStore {
   @observable updateStatus = '';
 
   @observable updateVersion = '';
+
+  @observable updateProgress = 0;
 
   @observable updateErrorMessage = '';
 
@@ -256,6 +259,15 @@ export default class AppStore extends TypedStore {
 
         if (data.available !== undefined && !data.available) {
           this.updateStatus = this.updateStatusTypes.NOT_AVAILABLE;
+        }
+
+        if (data.downloading) {
+          this.updateStatus = this.updateStatusTypes.DOWNLOADING;
+        }
+
+        if (data.progress) {
+          this.updateStatus = this.updateStatusTypes.DOWNLOADING;
+          this.updateProgress = data.progress.percent;
         }
 
         if (data.downloaded) {
@@ -597,6 +609,7 @@ export default class AppStore extends TypedStore {
       debug('_checkForUpdates: sending event to autoUpdate:check');
       this.updateStatus = this.updateStatusTypes.CHECKING;
       this.updateErrorMessage = '';
+      this.updateProgress = 0;
       ipcRenderer.send('autoUpdate', {
         action: 'check',
       });

@@ -125,6 +125,7 @@ export interface AppStore extends TypedStore {
     CHECKING: 'CHECKING';
     AVAILABLE: 'AVAILABLE';
     NOT_AVAILABLE: 'NOT_AVAILABLE';
+    DOWNLOADING: 'DOWNLOADING';
     DOWNLOADED: 'DOWNLOADED';
     FAILED: 'FAILED';
   };
