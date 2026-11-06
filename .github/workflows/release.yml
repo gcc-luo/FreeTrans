@@ -103,9 +103,17 @@ jobs:
       - run: pnpm release:verify-artifacts mac artifacts/mac arm64
       - run: pnpm release:verify-artifacts mac artifacts/mac x64
       - run: pnpm release:verify-artifacts win artifacts/win x64
+      - name: Select version-specific release notes
+        shell: bash
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            echo "RELEASE_NOTES_PATH=$notes" >> "$GITHUB_ENV"
+          fi
       - uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
+          body_path: ${{ env.RELEASE_NOTES_PATH }}
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           fail_on_unmatched_files: true

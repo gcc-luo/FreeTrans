@@ -6,7 +6,7 @@ FreeTrans 保留 Electron 桌面架构。推送与 `package.json` 版本一致�
 
 1. GitHub 仓库及其 Release 必须允许用户公开读取。桌面客户端不包含 GitHub 访问令牌。
 2. GitHub Actions 使用仓库自带的 `GITHUB_TOKEN` 发布，不需要单独创建个人访问令牌。macOS 签名是可选的：若有 Apple Developer ID Application 证书，可在仓库 **Settings → Secrets and variables → Actions** 中配置 `CSC_LINK`（`.p12` 的 Base64 内容或可访问地址）与 `CSC_KEY_PASSWORD`。没有证书时仍会构建未签名安装包，用户手动安装时可能需要按 macOS 的安全提示选择打开。
-3. 更新 `package.json` 的版本并将代码提交到 GitHub，然后推送相同版本的 tag。流水线会核对 tag 与应用版本，版本不匹配时停止。
+3. 更新 `package.json` 的版本；可在 `docs/releases/<tag>.md` 中编写本版说明，流水线会将其加入 Release 正文。提交到 GitHub 后推送相同版本的 tag。流水线会核对 tag 与应用版本，版本不匹配时停止。
 
 ## 安装包与更新文件
 
