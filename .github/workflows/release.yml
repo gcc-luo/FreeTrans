@@ -4,13 +4,22 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to build with the current workflow'
+        required: true
+        type: string
 
 concurrency:
-  group: desktop-release-${{ github.ref }}
+  group: desktop-release-${{ inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
   contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 jobs:
   build-macos:
@@ -19,7 +28,7 @@ jobs:
       matrix:
         include:
           - arch: arm64
-            runner: macos-14
+            runner: macos-15
           - arch: x64
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
@@ -29,6 +38,8 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK == '' && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.14.0
@@ -37,7 +48,7 @@ jobs:
           node-version: 22.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm release:verify-version "${{ github.ref_name }}"
+      - run: pnpm release:verify-version "$RELEASE_TAG"
       - name: Build macOS installer
         run: |
           if [ -z "$CSC_LINK" ]; then
@@ -56,6 +67,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.14.0
@@ -64,7 +77,7 @@ jobs:
           node-version: 22.18.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm release:verify-version "${{ github.ref_name }}"
+      - run: pnpm release:verify-version $env:RELEASE_TAG
       - run: pnpm build:release:win --x64
       - run: pnpm release:verify-artifacts win out x64
       - uses: actions/upload-artifact@v4
@@ -81,13 +94,15 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.14.0
       - uses: actions/setup-node@v4
         with:
           node-version: 22.18.0
-      - run: pnpm release:verify-version "${{ github.ref_name }}"
+      - run: pnpm release:verify-version "$RELEASE_TAG"
       - uses: actions/download-artifact@v4
         with:
           name: macos-release-arm64
@@ -106,16 +121,17 @@ jobs:
       - name: Select version-specific release notes
         shell: bash
         run: |
-          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          notes="docs/releases/${RELEASE_TAG}.md"
           if [ -f "$notes" ]; then
             echo "RELEASE_NOTES_PATH=$notes" >> "$GITHUB_ENV"
           fi
       - uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
           body_path: ${{ env.RELEASE_NOTES_PATH }}
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           fail_on_unmatched_files: true
           files: |
             artifacts/mac/*.dmg

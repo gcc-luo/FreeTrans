@@ -10,6 +10,8 @@ FreeTrans 保留 Electron 桌面架构。推送与 `package.json` 版本一致�
 
 ## 安装包与更新文件
 
+发布工作流也支持手动运行：在 GitHub Actions 选择当前 `main` 分支的工作流，填写已有的 `release_tag`（例如 `v0.0.10`）。构建会检出该 tag 的源码，并用当前工作流执行；版本检查、安装包完整性检查和 Release 目标仍使用该 tag。适用于 runner 镜像退役等构建环境问题，不需要移动已有 tag。macOS ARM64 当前使用 `macos-15`，Intel 使用 `macos-15-intel`。
+
 - macOS：分别构建 Apple Silicon 与 Intel 的 DMG，用户下载对应安装包后手动安装。
 - Windows：发布 x64 NSIS EXE，用户下载后手动运行安装程序。
 
