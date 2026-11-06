@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>FreeTrans · 本地演示</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: #edf0f6;
+      color: #19233d;
+      font-family: 'Microsoft YaHei', Arial, sans-serif;
+    }
+    .showcase {
+      width: 1380px;
+      padding: 36px 48px 28px;
+    }
+    .eyebrow {
+      font-size: 15px;
+      color: #6658cc;
+      font-weight: 700;
+      letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .eyebrow img {
+      width: 25px;
+      height: 25px;
+    }
+    h1 {
+      font-size: 36px;
+      line-height: 1.3;
+      margin: 12px 0 8px;
+      letter-spacing: -0.8px;
+    }
+    .intro {
+      margin: 0 0 24px;
+      font-size: 16px;
+      color: #68728a;
+    }
+    .app-window {
+      height: 804px;
+      display: flex;
+      flex-direction: column;
+      background: white;
+      border: 1px solid #d2d9e6;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 18px 52px #293c6014;
+    }
+    .window-bar {
+      height: 36px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: #fafbfe;
+      border-bottom: 1px solid #e1e5ec;
+      font-size: 11px;
+      color: #778199;
+    }
+    .window-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .window-title img {
+      width: 16px;
+      height: 16px;
+    }
+    .window-buttons {
+      letter-spacing: 16px;
+      color: #8690a6;
+      font-size: 13px;
+    }
+    .demo-label {
+      font-size: 11px;
+      background: #edf0f8;
+      color: #737b90;
+      padding: 4px 9px;
+      border-radius: 4px;
+    }
+    .workspace {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+    .nav {
+      width: 160px;
+      flex-shrink: 0;
+      background: #f7f7fc;
+      border-right: 1px solid #e8eaf1;
+      padding: 24px 12px;
+      display: flex;
+      flex-direction: column;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-weight: 700;
+      font-size: 18px;
+      margin-bottom: 36px;
+    }
+    .brand img {
+      width: 30px;
+      height: 30px;
+    }
+    .nav-caption {
+      color: #9299af;
+      font-size: 11px;
+      padding: 0 7px;
+      margin-bottom: 12px;
+      letter-spacing: 1px;
+    }
+    .service {
+      height: 43px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 10px;
+      font-size: 12px;
+      border-radius: 8px;
+      margin-bottom: 7px;
+      color: #68728a;
+    }
+    .service.active {
+      background: #e9e5fc;
+      color: #43378c;
+      font-weight: 600;
+    }
+    .service svg {
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .nav-bottom {
+      margin-top: auto;
+      color: #858da2;
+      font-size: 12px;
+      padding: 0 9px;
+    }
+    .chat-view {
+      min-width: 0;
+      flex: 1;
+      border: 0;
+      background: #efeae2;
+    }
+    .panel-root {
+      display: flex;
+      width: 312px;
+      flex-shrink: 0;
+    }
+    .bottom-caption {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 18px;
+      color: #778098;
+      font-size: 12px;
+    }
+    .scene-caption {
+      font-size: 15px;
+      color: #5145a3;
+      font-weight: 600;
+    }
+    .demo-cursor {
+      position: fixed;
+      z-index: 2147483647;
+      pointer-events: none;
+      width: 20px;
+      height: 26px;
+      filter: drop-shadow(0 1px 2px #0003);
+      display: none;
+    }
+    .demo-cursor:after {
+      content: '';
+      display: block;
+      width: 18px;
+      height: 24px;
+      clip-path: polygon(
+        0 0,
+        0 87%,
+        25% 65%,
+        47% 100%,
+        65% 90%,
+        44% 55%,
+        80% 55%
+      );
+      background: #353451;
+    }
+    .demo-cursor.click {
+      filter: drop-shadow(0 0 10px #6658cc);
+    }
+  </style>
+  <div class="showcase" id="showcase">
+    <div class="eyebrow"><img src="/logo.png" alt="" />FreeTrans</div>
+    <h1 id="headline">跨语言聊天，就在你熟悉的窗口里。</h1>
+    <p class="intro" id="intro">
+      看懂对方发来的消息，用自己的语言回复，核对译文后再发送。
+    </p>
+    <div class="app-window">
+      <div class="window-bar">
+        <div class="window-title"><img src="/logo.png" alt="" />FreeTrans</div>
+        <span class="demo-label">离线演示 · 示例会话</span>
+        <div class="window-buttons">— □ ×</div>
+      </div>
+      <div class="workspace">
+        <nav class="nav">
+          <div class="brand"><img src="/logo.png" alt="" />FreeTrans</div>
+          <div class="nav-caption">消息服务</div>
+          <div class="service active" id="nav-whatsapp"></div>
+          <div class="service" id="nav-telegram"></div>
+          <div class="service" id="nav-googlechat"></div>
+          <div class="nav-bottom">⚙ 设置</div>
+        </nav>
+        <iframe
+          title="示例聊天（离线）"
+          class="chat-view"
+          src="/conversation.html"
+        ></iframe>
+        <div id="panel" class="panel-root"></div>
+      </div>
+    </div>
+    <div class="bottom-caption">
+      <span id="scene" class="scene-caption"
+        >接收翻译 · 发送前预览 · 按会话选择语言</span
+      ><span>真实翻译组件 / 本地示例数据 / 非联网服务截图</span>
+    </div>
+  </div>
+  <div class="demo-cursor" id="cursor"></div>
+</html>

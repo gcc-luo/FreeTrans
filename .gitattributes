@@ -1,6 +1,7 @@
 # Prefer unix-style line-ending (lf)
 *       text    eol=lf
 *.png   binary
+*.gif   binary
 *.jpg   binary
 *.jpeg  binary
 *.ico   binary
