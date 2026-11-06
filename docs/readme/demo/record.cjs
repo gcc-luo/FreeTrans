@@ -246,16 +246,47 @@ async function main() {
       frame.locator('.message-in[data-ferdium-incoming-preview="1"]'),
     ).toHaveCount(2);
     const frames = { send: [], history: [] };
+    let capture = null;
+    const stopCapture = async () => {
+      if (!capture) return;
+      const current = capture;
+      current.running = false;
+      await current.task;
+      const last = frames[current.group].at(-1);
+      if (last) last.duration = Math.max(20, Date.now() - last.timestamp);
+      capture = null;
+    };
+    const startCapture = group => {
+      const current = { group, running: true, task: null };
+      current.task = (async () => {
+        while (current.running) {
+          const timestamp = Date.now();
+          const file = path.join(
+            temporary,
+            `${group}-live-${String(frames[group].length).padStart(4, '0')}.png`,
+          );
+          await page.locator('#showcase').screenshot({ path: file });
+          const previous = frames[group].at(-1);
+          if (previous) previous.duration = timestamp - previous.timestamp;
+          frames[group].push({ path: file, duration: 125, timestamp });
+          await new Promise(resolve => {
+            setTimeout(resolve, Math.max(0, 125 - (Date.now() - timestamp)));
+          });
+        }
+      })();
+      capture = current;
+    };
     const shot = async (group, duration, caption) => {
       await page.locator('#scene').evaluate((element, text) => {
         element.textContent = text;
       }, caption);
-      const file = path.join(
-        temporary,
-        `${group}-${String(frames[group].length).padStart(3, '0')}.png`,
-      );
-      await page.locator('#showcase').screenshot({ path: file });
-      frames[group].push({ path: file, duration });
+      if (!capture || capture.group !== group) {
+        await stopCapture();
+        startCapture(group);
+      }
+      await new Promise(resolve => {
+        setTimeout(resolve, duration);
+      });
     };
     const pointer = async locator => {
       const box = await locator.boundingBox();
@@ -271,11 +302,12 @@ async function main() {
     });
     await shot('send', 1000, '01 / 收到外语消息，直接查看中文译文');
     await composer.click();
+    await pointer(composer);
     const draft = '没问题，我会在会前把议程发给你。';
-    for (let index = 4; index < draft.length + 4; index += 4) {
-      await composer.fill(draft.slice(0, index));
-      await shot('send', 180, '02 / 用你熟悉的语言写下回复');
-    }
+    await page.locator('#scene').evaluate(element => {
+      element.textContent = '02 / 用你熟悉的语言写下回复';
+    });
+    await composer.pressSequentially(draft, { delay: 80 });
     const send = frame.getByRole('button', { name: '发送消息', exact: true });
     await pointer(send);
     await shot('send', 500, '02 / 点击发送，先生成译文');
@@ -303,6 +335,7 @@ async function main() {
       element.style.display = 'none';
     });
     await shot('send', 2300, '05 / 发送英文，本地原文仅供自己回看');
+    await stopCapture();
     await page.locator('#headline').evaluate(element => {
       element.textContent = '跨语言聊天，就在你熟悉的窗口里。';
     });
@@ -433,6 +466,7 @@ async function main() {
       element.style.display = 'none';
     });
     await shot('history', 2000, '05 / 再次执行时，已完成的消息自动跳过');
+    await stopCapture();
     fs.writeFileSync(
       path.join(temporary, 'frames.json'),
       JSON.stringify(frames, null, 2),
