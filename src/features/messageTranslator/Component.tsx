@@ -151,6 +151,44 @@ const messages = defineMessages({
     id: 'translator.panel.checkScope',
     defaultMessage: '按当前收发语言检测；短文本通过不保证每条消息都能翻译。',
   },
+  translateHistory: {
+    id: 'translator.panel.history.translate',
+    defaultMessage: '翻译已加载历史消息',
+  },
+  historyHint: {
+    id: 'translator.panel.history.hint',
+    defaultMessage:
+      '翻译当前聊天已加载的对方消息。向上滚动加载更早消息后，可再次补译；已完成的消息会自动跳过。请先开启接收翻译并选择具体的“我的语言”。',
+  },
+  historyWaiting: {
+    id: 'translator.panel.history.waiting',
+    defaultMessage: '正在准备历史翻译…',
+  },
+  historyProgress: {
+    id: 'translator.panel.history.progress',
+    defaultMessage:
+      '已处理 {completed}/{total} 条；翻译 {translated} 条，跳过 {skipped} 条，失败 {failed} 条。',
+  },
+  historyStopped: {
+    id: 'translator.panel.history.stopped',
+    defaultMessage: '历史翻译已停止。',
+  },
+  historyStopping: {
+    id: 'translator.panel.history.stopping',
+    defaultMessage: '正在停止，等待在途请求结束；其结果将被丢弃。',
+  },
+  historyFinished: {
+    id: 'translator.panel.history.finished',
+    defaultMessage: '本批历史翻译已完成。',
+  },
+  historyEmpty: {
+    id: 'translator.panel.history.empty',
+    defaultMessage: '当前没有已加载的对方消息，请打开聊天或向上滚动加载。',
+  },
+  stopHistory: {
+    id: 'translator.panel.history.stop',
+    defaultMessage: '停止历史翻译',
+  },
 });
 
 interface EngineStatus {
@@ -343,6 +381,13 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
       activeService.id,
     );
     const panelTheme = serviceSettings.panelTheme === 'dark' ? 'dark' : 'light';
+    const isWhatsApp =
+      messageTranslator._resolveTranslatorInterceptorPlatform(activeService) ===
+      'whatsapp';
+    const history =
+      messageTranslator.historyTranslationStates[activeService.id];
+    const historyRunning =
+      history && ['queued', 'running', 'stopping'].includes(history.status);
     const availableEngines = (this.state.engineStatuses || [])
       .filter(status => status.available)
       .map(status => status.engine);
@@ -535,6 +580,71 @@ class MessageTranslatorPanel extends Component<Props, PanelState> {
                   }),
               })}
             </div>
+            {isWhatsApp && (
+              <div className="translator-engine-section">
+                <button
+                  type="button"
+                  disabled={
+                    Boolean(historyRunning) ||
+                    !serviceSettings.receiveTranslation ||
+                    myLanguageValue === 'auto'
+                  }
+                  onClick={() =>
+                    messageTranslator.translateLoadedHistory(activeService.id)
+                  }
+                >
+                  {intl.formatMessage(messages.translateHistory)}
+                </button>
+                {historyRunning && (
+                  <button
+                    type="button"
+                    disabled={history.status === 'stopping'}
+                    onClick={() =>
+                      messageTranslator.cancelHistoryTranslation(
+                        activeService.id,
+                      )
+                    }
+                  >
+                    {intl.formatMessage(messages.stopHistory)}
+                  </button>
+                )}
+                <p className="translator-engine-section__hint">
+                  {intl.formatMessage(messages.historyHint)}
+                </p>
+                {history && (
+                  <div role="status" aria-live="polite">
+                    {history.status === 'queued' ? (
+                      <p>{intl.formatMessage(messages.historyWaiting)}</p>
+                    ) : history.status === 'stopping' ? (
+                      <p>{intl.formatMessage(messages.historyStopping)}</p>
+                    ) : history.status === 'failed' ? (
+                      <p>{history.message}</p>
+                    ) : (
+                      <>
+                        <p>
+                          {intl.formatMessage(
+                            messages.historyProgress,
+                            history,
+                          )}
+                        </p>
+                        {history.status === 'completed' && (
+                          <p>
+                            {intl.formatMessage(
+                              history.total === 0
+                                ? messages.historyEmpty
+                                : messages.historyFinished,
+                            )}
+                          </p>
+                        )}
+                        {history.status === 'cancelled' && (
+                          <p>{intl.formatMessage(messages.historyStopped)}</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <details className="translator-privacy">
               <summary>{intl.formatMessage(messages.privacyTitle)}</summary>
               <p>{intl.formatMessage(messages.privacyNotice)}</p>

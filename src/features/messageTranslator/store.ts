@@ -21,6 +21,7 @@ import {
   TRANSLATOR_MIN_WIDTH,
 } from './constants';
 import { buildTelegramInterceptorScript } from './telegram-interceptor';
+import { TARGET_LANGUAGE_OPTIONS } from './language-options';
 
 const debug = require('../../preload-safe-debug')(
   'Ferdium:feature:messageTranslator:store',
@@ -33,6 +34,20 @@ export default class MessageTranslatorStore extends FeatureStore {
 
   @observable activeServiceId: string | null = null;
 
+  @observable historyTranslationStates: Record<
+    string,
+    {
+      requestId: string;
+      status: string;
+      completed: number;
+      total: number;
+      translated: number;
+      failed: number;
+      skipped: number;
+      message?: string;
+    }
+  > = {};
+
   actions: any = undefined;
 
   _allReactions: Reaction[] | undefined;
@@ -40,6 +55,8 @@ export default class MessageTranslatorStore extends FeatureStore {
   _injectedWhatsAppServices = new Set<string>();
 
   _whatsAppRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  _cancelledHistoryRequests = new Set<string>();
 
   constructor() {
     super();
@@ -403,6 +420,8 @@ export default class MessageTranslatorStore extends FeatureStore {
       sendTranslation: actualSettings.sendTranslation !== false,
       receiveTranslation: actualSettings.receiveTranslation !== false,
       showOriginalText: actualSettings.showOriginalText === true,
+      conversationLanguages: actualSettings.conversationLanguages || {},
+      targetLanguageOptions: TARGET_LANGUAGE_OPTIONS,
     });
     const interceptorPlatformJson = JSON.stringify(interceptorPlatform);
 
@@ -583,7 +602,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           return false;
         };
 
-        const interceptorVersion = '2026-09-30-v18';
+        const interceptorVersion = '2026-11-06-v20';
         const interceptorPlatform = ${interceptorPlatformJson};
         if (
           window.__ferdiumTranslatorInterceptorLoaded &&
@@ -657,9 +676,12 @@ export default class MessageTranslatorStore extends FeatureStore {
             sendTranslation: initialSettings.sendTranslation,
             receiveTranslation: initialSettings.receiveTranslation,
             showOriginalText: initialSettings.showOriginalText,
+            conversationLanguages: initialSettings.conversationLanguages || {},
           },
           translating: false,
           bypassSendUntil: 0,
+          nativeSendDepth: 0,
+          settingsRevision: 0,
           requestId: 0,
           requests: new Map(),
           flowSeq: 0,
@@ -668,6 +690,9 @@ export default class MessageTranslatorStore extends FeatureStore {
           lastTrigger: null,
           incomingScanTimer: 0,
           incomingScanning: false,
+          incomingRescan: false,
+          cancelPreview: null,
+          historyJob: null,
           outgoingHistoryScanTimer: 0,
           outgoingHistoryScanning: false,
           outgoingHistoryLookupCache: new Map(),
@@ -680,6 +705,7 @@ export default class MessageTranslatorStore extends FeatureStore {
         const registerCleanup = fn => {
           if (typeof fn === 'function') cleanupTasks.push(fn);
         };
+        registerCleanup(() => state.cancelPreview?.());
 
         const addDomListener = (target, eventName, handler, options) => {
           if (!target?.addEventListener || !target?.removeEventListener) return;
@@ -718,6 +744,9 @@ export default class MessageTranslatorStore extends FeatureStore {
           }
           if (merged.showOriginalText === undefined) {
             merged.showOriginalText = false;
+          }
+          if (['myLanguage', 'targetLanguage', 'translatorEngine', 'sendTranslation', 'receiveTranslation'].some(key => merged[key] !== state.settings[key])) {
+            state.settingsRevision += 1;
           }
           return merged;
         };
@@ -2235,6 +2264,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           if (nextSignature === activeChatSignature) return;
           activeChatSignature = nextSignature;
           scheduleBootstrapFormattingPass(reason);
+          scheduleIncomingScan(reason, 0);
         };
 
         const startActiveChatWatcher = () => {
@@ -3216,13 +3246,31 @@ export default class MessageTranslatorStore extends FeatureStore {
           source.select();
         };
 
+        const getOutgoingTargetLanguage = () =>
+          (isWhatsAppProfile() && state.settings.conversationLanguages?.[getActiveChatSignature()]) ||
+          state.settings.targetLanguage || 'en';
+
+        const describeTranslationError = error => {
+          const message = String(error?.message || error || '');
+          if (/send-not-confirmed/.test(message)) return '尚未确认发送成功，请先检查聊天记录，再决定是否重试。原文已保留。';
+          if (/credential|app.?id|secret|api.?key|401|403/i.test(message)) return '翻译引擎凭据缺失或无效，请到“设置 → 语言”检查配置。';
+          if (/429|quota|rate.?limit|限流/i.test(message)) return '翻译服务请求过多或额度不足，请稍后重试或切换引擎。';
+          if (/timeout|timed.?out|network|fetch|ENOTFOUND|ECONN/i.test(message)) return '连接翻译服务超时或网络不可用，请检查网络后重试。';
+          if (/unsupported.*lang|language.*support/i.test(message)) return '引擎不支持当前语言组合，请更换语言或引擎。';
+          return message || '翻译失败，请重试或更换引擎。';
+        };
+
         const confirmTranslatedMessage = (original, translated) =>
           new Promise(resolve => {
             const overlay = document.createElement('div');
             overlay.setAttribute('data-ferdium-translation-confirm', '1');
             overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.48);display:flex;align-items:center;justify-content:center;padding:16px;';
+            if (isWhatsAppProfile()) {
+              overlay.style.cssText = 'position:fixed;right:20px;bottom:90px;z-index:2147483647;width:min(480px,calc(100vw - 40px));';
+            }
             const card = document.createElement('div');
             card.style.cssText = 'width:min(480px,100%);max-height:90vh;overflow:auto;background:#fff;color:#1f2937;border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.25);font:14px/1.5 sans-serif;';
+            if (isWhatsAppProfile()) card.style.boxSizing = 'border-box';
             const title = document.createElement('strong');
             title.textContent = original.trim() === translated.trim()
               ? '译文与原文相同，请确认发送'
@@ -3239,6 +3287,41 @@ export default class MessageTranslatorStore extends FeatureStore {
             editor.setAttribute('aria-label', '将发送给对方的译文');
             editor.style.cssText = 'box-sizing:border-box;width:100%;min-height:100px;padding:8px;resize:vertical;border:1px solid #9ca3af;border-radius:6px;font:inherit;';
             const actions = document.createElement('div');
+            const languageSelect = document.createElement('select');
+            languageSelect.setAttribute('aria-label', '当前会话目标语言');
+            const languages = Object.fromEntries((initialSettings.targetLanguageOptions || []).map(option => [option.value, option.label]));
+            const chat = getActiveChatSignature();
+            const currentLanguage = getOutgoingTargetLanguage();
+            let previewLanguage = currentLanguage;
+            const previewEngine = state.settings.translatorEngine;
+            const previewSourceLanguage = state.settings.myLanguage;
+            if (!languages[currentLanguage]) languages[currentLanguage] = currentLanguage;
+            languageSelect.append(new Option('沿用默认语言（' + state.settings.targetLanguage + '）', ''));
+            for (const [value, label] of Object.entries(languages)) languageSelect.append(new Option(label, value));
+            languageSelect.value = state.settings.conversationLanguages?.[chat] || '';
+            let languageSequence = 0;
+            languageSelect.addEventListener('change', async () => {
+              const sequence = ++languageSequence;
+              send.disabled = true;
+              const conversationLanguages = { ...state.settings.conversationLanguages };
+              if (languageSelect.value) conversationLanguages[chat] = languageSelect.value;
+              else delete conversationLanguages[chat];
+              state.settings.conversationLanguages = conversationLanguages;
+              previewLanguage = getOutgoingTargetLanguage();
+              sendToHostSafe('translator:settings-changed', { serviceId: '${serviceId}', settings: { conversationLanguages } });
+              try {
+                const target = getOutgoingTargetLanguage();
+                const result = await translate(original, { fromLang: 'auto', toLang: target, reason: 'conversation-language' });
+                const validation = await validateTranslatedLanguage(result, target);
+                if (!validation.match) throw new Error('译文语言与目标语言不符');
+                if (sequence !== languageSequence || !overlay.isConnected) return;
+                editor.value = result;
+                translationLabel.textContent = '将发送给对方的内容（可编辑）';
+                send.disabled = false;
+              } catch (error) {
+                if (sequence === languageSequence) translationLabel.textContent = describeTranslationError(error);
+              }
+            });
             actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;margin-top:12px;';
             const cancel = document.createElement('button');
             cancel.type = 'button';
@@ -3251,11 +3334,27 @@ export default class MessageTranslatorStore extends FeatureStore {
             send.style.cssText = 'background:#2563eb;color:#fff;border:0;border-radius:6px;padding:6px 12px;';
             cancel.style.cssText = 'background:#f3f4f6;border:0;border-radius:6px;padding:6px 12px;';
             const finish = value => {
+              clearInterval(contextTimer);
               overlay.remove();
+              if (state.cancelPreview === cancelPreview) state.cancelPreview = null;
               resolve(value);
             };
+            const cancelPreview = () => finish(null);
+            const contextTimer = setInterval(() => {
+              if (isWhatsAppProfile() && (!isActiveInterceptorInstance() || getActiveChatSignature() !== chat ||
+                  !state.settings.sendTranslation || getComposerText(readComposer()) !== original ||
+                  previewEngine !== state.settings.translatorEngine || previewSourceLanguage !== state.settings.myLanguage ||
+                  previewLanguage !== getOutgoingTargetLanguage())) finish(null);
+            }, 200);
+            state.cancelPreview = cancelPreview;
             cancel.addEventListener('click', () => finish(null));
             send.addEventListener('click', () => {
+              if (isWhatsAppProfile() && (previewEngine !== state.settings.translatorEngine || previewSourceLanguage !== state.settings.myLanguage ||
+                  previewLanguage !== getOutgoingTargetLanguage() || !state.settings.sendTranslation ||
+                  getActiveChatSignature() !== chat || getComposerText(readComposer()) !== original)) {
+                finish(null);
+                return;
+              }
               const value = editor.value.trim();
               if (value) finish(value);
               else editor.focus();
@@ -3269,6 +3368,12 @@ export default class MessageTranslatorStore extends FeatureStore {
             });
             actions.append(cancel, send);
             card.append(title, sourceLabel, source, translationLabel, editor, actions);
+            if (isWhatsAppProfile()) {
+              const languageLabel = document.createElement('label');
+              languageLabel.textContent = '当前聊天发送语言（自动保存）：';
+              languageLabel.append(languageSelect);
+              card.insertBefore(languageLabel, translationLabel);
+            }
             overlay.appendChild(card);
             document.body.appendChild(overlay);
             send.focus();
@@ -3432,6 +3537,9 @@ export default class MessageTranslatorStore extends FeatureStore {
             return { match: true, detectedLanguage: '' };
           }
           const detectedLanguage = await detectLanguage(normalizedText);
+          if (!detectedLanguage || detectedLanguage === 'auto') {
+            return { match: true, detectedLanguage: '', uncertain: true };
+          }
           const match = languageTagMatches(detectedLanguage, normalizedExpected);
           try {
             console.log(
@@ -3448,7 +3556,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           return { match, detectedLanguage };
         };
 
-        const processIncomingMessageRow = async (row, reason = 'unknown') => {
+        const processIncomingMessageRow = async (row, reason = 'unknown', isAllowed = () => true) => {
           if (!isActiveInterceptorInstance()) return;
           if (!state.settings.receiveTranslation) return;
           if (!(row instanceof Element)) return;
@@ -3467,13 +3575,20 @@ export default class MessageTranslatorStore extends FeatureStore {
             return;
           }
 
-          const showIncomingFailure = () => {
+          const revision = state.settingsRevision;
+          const chat = getActiveChatSignature();
+          const sourceSnapshot = extractIncomingOriginalText(textContainer);
+          const isCurrent = () => isAllowed() && isActiveInterceptorInstance() && state.settings.receiveTranslation &&
+            state.settingsRevision === revision && getActiveChatSignature() === chat && row.isConnected &&
+            extractIncomingOriginalText(textContainer) === sourceSnapshot;
+          const showIncomingFailure = error => {
+            if (!isCurrent()) return;
             if (textContainer.querySelector('[data-ferdium-incoming-error="1"]')) return;
-            row.setAttribute('data-ferdium-incoming-error-source', originalComparable);
+            row.setAttribute('data-ferdium-incoming-error-source', failureMarker);
             const retry = document.createElement('button');
             retry.type = 'button';
             retry.setAttribute('data-ferdium-incoming-error', '1');
-            retry.textContent = '翻译失败，点击重试';
+            retry.textContent = describeTranslationError(error || '翻译失败') + ' 点击重试';
             retry.style.cssText = 'display:block;margin-top:4px;border:0;background:transparent;color:#b42318;cursor:pointer;font-size:11px;padding:0;';
             retry.addEventListener('click', event => {
               event.preventDefault();
@@ -3487,13 +3602,14 @@ export default class MessageTranslatorStore extends FeatureStore {
 
           const originalText = extractIncomingOriginalText(textContainer);
           const originalComparable = toComparableText(originalText);
+          const failureMarker = JSON.stringify([originalComparable, state.settings.myLanguage, state.settings.translatorEngine]);
           if (
-            reason !== 'manual-retry' &&
-            row.getAttribute('data-ferdium-incoming-error-source') === originalComparable
+            reason !== 'manual-retry' && reason !== 'history' &&
+            row.getAttribute('data-ferdium-incoming-error-source') === failureMarker
           ) {
             return;
           }
-          if (row.getAttribute('data-ferdium-incoming-error-source') !== originalComparable) {
+          if (row.getAttribute('data-ferdium-incoming-error-source') !== failureMarker) {
             textContainer.querySelector('[data-ferdium-incoming-error="1"]')?.remove();
             row.removeAttribute('data-ferdium-incoming-error-source');
           }
@@ -3534,6 +3650,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           row.setAttribute(INCOMING_PREVIEW_PENDING_ATTR, '1');
           try {
             const detectedLanguage = await detectLanguage(originalText);
+            if (!isCurrent()) return;
             const inferredLanguage = inferLanguageFromCharacterSet(originalText);
             const effectiveDetectedLanguage = inferredLanguage || detectedLanguage;
             const lowConfidenceIncomingDetection =
@@ -3616,11 +3733,15 @@ export default class MessageTranslatorStore extends FeatureStore {
               reason: 'incoming:' + reason,
             });
 
+            if (!isCurrent()) return;
             translatedText = String(translatedText || '').trim();
-            if (
-              !translatedText ||
-              toComparableText(translatedText) === originalComparable
-            ) {
+            if (translatedText && toComparableText(translatedText) === originalComparable) {
+              row.setAttribute(INCOMING_PREVIEW_SOURCE_ATTR, originalComparable);
+              row.setAttribute(INCOMING_PREVIEW_TARGET_LANG_ATTR, translatePlan.myLanguage);
+              row.setAttribute('data-ferdium-incoming-unchanged', '1');
+              return;
+            }
+            if (!translatedText) {
               showIncomingFailure();
               return;
             }
@@ -3680,6 +3801,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               return;
             }
 
+            if (!isCurrent()) return;
             const applied = applyIncomingPreviewDecoration(
               textContainer,
               translatedText,
@@ -3717,7 +3839,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               });
             } catch (_e) {}
           } catch (error) {
-            showIncomingFailure();
+            showIncomingFailure(error);
             try {
               console.warn('[Ferdium Translator] Incoming translation failed', {
                 reason,
@@ -3732,7 +3854,7 @@ export default class MessageTranslatorStore extends FeatureStore {
         const scanIncomingMessages = async (reason = 'unknown') => {
           if (!isActiveInterceptorInstance()) return;
           if (!state.settings.receiveTranslation) return;
-          if (state.incomingScanning) return;
+          if (state.incomingScanning) { state.incomingRescan = true; return; }
 
           state.incomingScanning = true;
           try {
@@ -3751,13 +3873,25 @@ export default class MessageTranslatorStore extends FeatureStore {
                   }),
               );
             } catch (_e) {}
-            const startIndex = Math.max(0, rows.length - 20);
-            for (let index = startIndex; index < rows.length; index += 1) {
-              // eslint-disable-next-line no-await-in-loop
-              await processIncomingMessageRow(rows[index], reason);
-            }
+            const visible = row => {
+              const rect = row.getBoundingClientRect();
+              return rect.bottom > 0 && rect.top < window.innerHeight;
+            };
+            const recent = new Set(rows.slice(-20));
+            const queue = rows.filter(row => recent.has(row) || visible(row)).reverse().sort((a, b) => Number(visible(b)) - Number(visible(a)));
+            const worker = async () => {
+              while (queue.length && isActiveInterceptorInstance() && state.settings.receiveTranslation) {
+                const row = queue.shift();
+                await processIncomingMessageRow(row, reason);
+              }
+            };
+            await Promise.all([worker(), worker(), worker()]);
           } finally {
             state.incomingScanning = false;
+            if (state.incomingRescan) {
+              state.incomingRescan = false;
+              scheduleIncomingScan('queued-rescan', 0);
+            }
           }
         };
 
@@ -3772,6 +3906,88 @@ export default class MessageTranslatorStore extends FeatureStore {
             scanIncomingMessages(reason);
           }, Math.max(0, Number(delayMs) || 0));
         };
+
+        const translateLoadedHistory = async requestId => {
+          if (state.historyJob) throw new Error('已有历史翻译任务正在执行');
+          if (!state.settings.receiveTranslation) throw new Error('请先开启接收翻译');
+          if (!readComposer()) throw new Error('请先打开一个 WhatsApp 聊天');
+          const target = normalizeLanguageTag(state.settings.myLanguage || '');
+          if (!target || target === 'auto') throw new Error('请先选择具体的“我的语言”');
+          const chat = getActiveChatSignature();
+          const revision = state.settingsRevision;
+          const rows = getIncomingMessageRows().slice().reverse();
+          const snapshot = new Set(rows);
+          const liveHandled = new Set();
+          const job = { requestId, status: 'queued', completed: 0, total: rows.length, translated: 0, failed: 0, skipped: 0, cancelled: false };
+          state.historyJob = job;
+          const isCurrent = () => !job.cancelled && isActiveInterceptorInstance() &&
+            getActiveChatSignature() === chat && state.settingsRevision === revision;
+          const result = () => ({ requestId, status: job.status, completed: job.completed, total: job.total, translated: job.translated, failed: job.failed, skipped: job.skipped });
+          const report = () => sendToHostSafe('translator:history-progress', result());
+          report();
+          let ownsScan = false;
+          try {
+            while (state.incomingScanning && isCurrent()) await sleep(80);
+            if (!isCurrent()) return { ...result(), status: 'cancelled' };
+            state.incomingScanning = true;
+            ownsScan = true;
+            job.status = 'running';
+            report();
+            const worker = async () => {
+              while (isCurrent()) {
+                // New messages keep priority while a long history batch is running.
+                const live = getIncomingMessageRows().slice(-20).reverse().find(row => !snapshot.has(row) && !liveHandled.has(row));
+                if (live) {
+                  liveHandled.add(live);
+                  await processIncomingMessageRow(live, 'history-live', isCurrent);
+                  continue;
+                }
+                const row = rows.shift();
+                if (!row) break;
+                const body = findIncomingMessageTextContainer(row);
+                const source = body && toComparableText(extractIncomingOriginalText(body));
+                const already = source && row.getAttribute(INCOMING_PREVIEW_SOURCE_ATTR) === source &&
+                  row.getAttribute(INCOMING_PREVIEW_TARGET_LANG_ATTR) === target;
+                if (!body || !source || !row.isConnected || already) {
+                  job.skipped += 1;
+                } else {
+                  await processIncomingMessageRow(row, 'history', isCurrent);
+                  if (!isCurrent()) return;
+                  if (row.hasAttribute('data-ferdium-incoming-error-source')) job.failed += 1;
+                  else if (row.getAttribute(INCOMING_PREVIEW_ATTR) === '1') job.translated += 1;
+                  else job.skipped += 1;
+                }
+                job.completed += 1;
+                report();
+              }
+            };
+            await Promise.all([worker(), worker(), worker()]);
+            job.status = isCurrent() ? 'completed' : 'cancelled';
+            return result();
+          } finally {
+            if (job.status === 'queued' || job.status === 'running') job.status = 'cancelled';
+            report();
+            if (state.historyJob === job) state.historyJob = null;
+            if (ownsScan) {
+              state.incomingScanning = false;
+              state.incomingRescan = false;
+              scheduleIncomingScan('history-finished', 0);
+            }
+          }
+        };
+        if (isWhatsAppProfile()) {
+          window.__ferdiumTranslatorTranslateHistory = translateLoadedHistory;
+          window.__ferdiumTranslatorCancelHistory = () => {
+            if (state.historyJob) state.historyJob.cancelled = true;
+          };
+          registerCleanup(() => {
+            if (state.historyJob) state.historyJob.cancelled = true;
+            if (window.__ferdiumTranslatorTranslateHistory === translateLoadedHistory) {
+              delete window.__ferdiumTranslatorTranslateHistory;
+              delete window.__ferdiumTranslatorCancelHistory;
+            }
+          });
+        }
 
         let incomingObserver = null;
         const ensureIncomingObserver = () => {
@@ -3983,6 +4199,13 @@ export default class MessageTranslatorStore extends FeatureStore {
           const trySendViaClick = () => {
             const sendButton = findSendButton();
             if (!sendButton) return false;
+            if (isWhatsAppProfile()) {
+              state.nativeSendDepth += 1;
+              try { sendButton.click(); } finally { state.nativeSendDepth -= 1; }
+              return true;
+            }
+            state.nativeSendDepth += 1;
+            try {
             try {
               sendButton.dispatchEvent(
                 new MouseEvent('pointerdown', {
@@ -4014,6 +4237,7 @@ export default class MessageTranslatorStore extends FeatureStore {
               );
             } catch (_error) {}
             sendButton.click();
+            } finally { state.nativeSendDepth -= 1; }
             return true;
           };
 
@@ -4021,6 +4245,8 @@ export default class MessageTranslatorStore extends FeatureStore {
             const composer = readComposer();
             if (!composer) return false;
             composer.focus();
+            state.nativeSendDepth += 1;
+            try {
             composer.dispatchEvent(
               new KeyboardEvent('keydown', {
                 key: 'Enter',
@@ -4041,6 +4267,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                 cancelable: true,
               }),
             );
+            } finally { state.nativeSendDepth -= 1; }
             return true;
           };
 
@@ -4063,6 +4290,22 @@ export default class MessageTranslatorStore extends FeatureStore {
                 throw new Error('composer-update-before-send-failed');
               }
             }
+          }
+
+          if (isWhatsAppProfile()) {
+            const chat = getActiveChatSignature();
+            const before = new Set(getOutgoingMessageRows());
+            if (!trySendViaClick()) trySendViaEnter();
+            const deadline = Date.now() + 4000;
+            while (Date.now() < deadline) {
+              if (!isActiveInterceptorInstance() || getActiveChatSignature() !== chat) throw new Error('send-not-confirmed');
+              const sent = getOutgoingMessageRows().some(row =>
+                !before.has(row) && toComparableText(row.innerText || row.textContent || '').includes(toComparableText(desiredText)),
+              );
+              if (sent) return;
+              await sleep(80);
+            }
+            throw new Error('send-not-confirmed');
           }
 
           const beforeSend = getComposerText(composer);
@@ -4166,6 +4409,8 @@ export default class MessageTranslatorStore extends FeatureStore {
           }
 
           const initialChatSignature = getActiveChatSignature();
+          const initialTargetLanguage = getOutgoingTargetLanguage();
+          const initialSettingsRevision = state.settingsRevision;
           const isSameChat = () =>
             isActiveInterceptorInstance() &&
             getActiveChatSignature() === initialChatSignature;
@@ -4212,14 +4457,14 @@ export default class MessageTranslatorStore extends FeatureStore {
 
             let translated = await translate(original, {
               fromLang: preferredSourceLanguage,
-              toLang: state.settings.targetLanguage || 'en',
+              toLang: getOutgoingTargetLanguage(),
               reason: 'outgoing-first',
             });
             let finalText = (translated || original).trim() || original;
 
             let outgoingValidation = await validateTranslatedLanguage(
               finalText,
-              state.settings.targetLanguage || 'en',
+              getOutgoingTargetLanguage(),
               'outgoing-first',
             );
             if (!outgoingValidation.match) {
@@ -4229,13 +4474,13 @@ export default class MessageTranslatorStore extends FeatureStore {
                   : 'auto';
               translated = await translate(original, {
                 fromLang: retrySourceLanguage,
-                toLang: state.settings.targetLanguage || 'en',
+                toLang: getOutgoingTargetLanguage(),
                 reason: 'outgoing-language-retry',
               });
               finalText = (translated || original).trim() || original;
               outgoingValidation = await validateTranslatedLanguage(
                 finalText,
-                state.settings.targetLanguage || 'en',
+                getOutgoingTargetLanguage(),
                 'outgoing-retry',
               );
             }
@@ -4259,11 +4504,16 @@ export default class MessageTranslatorStore extends FeatureStore {
               }),
             );
             showStatus('', false, false);
+            if (!isSameChat() || state.settingsRevision !== initialSettingsRevision ||
+                getOutgoingTargetLanguage() !== initialTargetLanguage || getComposerText(readComposer()) !== original) {
+              throw new Error('会话、语言设置或草稿已变化，请重新翻译');
+            }
             const confirmedText = await confirmTranslatedMessage(original, finalText);
             if (!confirmedText) {
               return;
             }
             const finalSendText = confirmedText;
+            if (!state.settings.sendTranslation) throw new Error('发送翻译已关闭，译文未发送');
             if (!isSameChat()) {
               throw new Error('会话已切换，译文未发送');
             }
@@ -4372,7 +4622,7 @@ export default class MessageTranslatorStore extends FeatureStore {
                   originalText: original,
                   translatedText: finalSendText,
                   fromLanguage: preferredSourceLanguage,
-                  toLanguage: state.settings.targetLanguage || '',
+                  toLanguage: getOutgoingTargetLanguage(),
                   translatorEngine: state.settings.translatorEngine || 'Google',
                 });
                 if (savedOutgoing?.saved) {
@@ -4423,7 +4673,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             const errorMessage =
               error && error.message ? String(error.message) : 'unknown-error';
             hideStatusImmediately = false;
-            showStatus('翻译未发送：' + errorMessage, true, true);
+            showStatus((nativeSendAttempted ? '发送状态待确认：' : '翻译未发送：') + describeTranslationError(error), true, true);
             return;
           } finally {
             if (hideStatusImmediately) {
@@ -4555,7 +4805,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             } catch (_e) {}
             return;
           }
-          if (Date.now() < state.bypassSendUntil) {
+          if (state.nativeSendDepth > 0 && !event.isTrusted || !isWhatsAppProfile() && Date.now() < state.bypassSendUntil) {
             try {
               console.log('[Ferdium Translator] Bypass period active, skipping');
             } catch (_e) {}
@@ -4591,7 +4841,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           if (!isActiveInterceptorInstance()) return;
           if (event.target?.closest?.('[data-ferdium-translation-confirm]')) return;
           if (!state.settings.sendTranslation) return;
-          if (Date.now() < state.bypassSendUntil) return;
+          if (state.nativeSendDepth > 0 && !event.isTrusted || !isWhatsAppProfile() && Date.now() < state.bypassSendUntil) return;
           if (event.isComposing) return;
           const inputType = String(event.inputType || '');
           if (inputType !== 'insertLineBreak' && inputType !== 'insertParagraph') {
@@ -4623,7 +4873,7 @@ export default class MessageTranslatorStore extends FeatureStore {
             } catch (_e) {}
             return;
           }
-          if (Date.now() < state.bypassSendUntil) {
+          if (state.nativeSendDepth > 0 && !event.isTrusted || !isWhatsAppProfile() && Date.now() < state.bypassSendUntil) {
             try {
               console.log('[Ferdium Translator] Send button ignored (bypass period)');
             } catch (_e) {}
@@ -4692,7 +4942,7 @@ export default class MessageTranslatorStore extends FeatureStore {
           if (!isActiveInterceptorInstance()) return;
           if (!isGoogleChatProfile()) return;
           if (!state.settings.sendTranslation) return;
-          if (Date.now() < state.bypassSendUntil) return;
+          if (state.nativeSendDepth > 0 && !event.isTrusted || !isWhatsAppProfile() && Date.now() < state.bypassSendUntil) return;
 
           const eventTargetElement = resolveEventTargetElement(event);
           const form = eventTargetElement?.closest?.('form');
@@ -5014,6 +5264,93 @@ export default class MessageTranslatorStore extends FeatureStore {
     this._pushSettingsToService(serviceId);
   };
 
+  translateLoadedHistory = async (serviceId: string) => {
+    const previous = this.historyTranslationStates[serviceId];
+    if (previous && ['queued', 'running', 'stopping'].includes(previous.status))
+      return;
+    const service = this.stores?.services?.one?.(serviceId);
+    if (this._resolveTranslatorInterceptorPlatform(service) !== 'whatsapp')
+      return;
+    const requestId = `history-${Date.now()}`;
+    const initial = {
+      requestId,
+      status: 'queued',
+      completed: 0,
+      total: 0,
+      translated: 0,
+      failed: 0,
+      skipped: 0,
+    };
+    runInAction(() => {
+      this.historyTranslationStates[serviceId] = initial;
+    });
+    try {
+      const status = await this._ensureWhatsAppInterceptor(
+        serviceId,
+        'whatsapp',
+      );
+      if (status !== 'ok' && status !== 'already') {
+        throw new Error('WhatsApp 尚未就绪，请等待聊天页面加载后重试。');
+      }
+      if (this._cancelledHistoryRequests.has(requestId)) {
+        runInAction(() => {
+          this.historyTranslationStates[serviceId] = {
+            ...initial,
+            status: 'cancelled',
+          };
+        });
+        return;
+      }
+      const result = await service.webview.executeJavaScript(
+        `window.__ferdiumTranslatorTranslateHistory(${JSON.stringify(requestId)})`,
+        true,
+      );
+      runInAction(() => {
+        this.historyTranslationStates[serviceId] = { ...initial, ...result };
+      });
+    } catch (error) {
+      runInAction(() => {
+        this.historyTranslationStates[serviceId] = {
+          ...this.historyTranslationStates[serviceId],
+          status: 'failed',
+          message:
+            error instanceof Error
+              ? error.message
+              : '历史翻译未完成，请重新打开聊天后重试。',
+        };
+      });
+    } finally {
+      this._cancelledHistoryRequests.delete(requestId);
+    }
+  };
+
+  cancelHistoryTranslation = async (serviceId: string) => {
+    const current = this.historyTranslationStates[serviceId];
+    if (!current || !['queued', 'running'].includes(current.status)) return;
+    this._cancelledHistoryRequests.add(current.requestId);
+    runInAction(() => {
+      this.historyTranslationStates[serviceId] = {
+        ...current,
+        status: 'stopping',
+      };
+    });
+    const service = this.stores?.services?.one?.(serviceId);
+    try {
+      await service?.webview?.executeJavaScript(
+        'window.__ferdiumTranslatorCancelHistory?.()',
+        true,
+      );
+    } catch {
+      runInAction(() => {
+        this.historyTranslationStates[serviceId] = {
+          ...current,
+          status: 'failed',
+          message: '无法停止历史翻译，请重新载入当前服务。',
+        };
+      });
+    }
+  };
+
   @action _translateMessage = async ({
     text,
     fromLang,
@@ -5060,6 +5397,20 @@ export default class MessageTranslatorStore extends FeatureStore {
     message: { action: string; data: any };
   }) => {
     debug('_handleClientMessage', channel, message);
+
+    if (message.action === 'translator:history-progress') {
+      const { serviceId, ...progress } = message.data || {};
+      if (
+        serviceId &&
+        this.historyTranslationStates[serviceId]?.requestId ===
+          progress.requestId
+      ) {
+        this.historyTranslationStates[serviceId] = {
+          ...this.historyTranslationStates[serviceId],
+          ...progress,
+        };
+      }
+    }
 
     if (
       message.action === 'translator:settings-changed' &&

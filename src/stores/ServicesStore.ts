@@ -896,6 +896,17 @@ export default class ServicesStore extends TypedStore {
         break;
       }
 
+      case 'translator:history-progress': {
+        this.stores?.messageTranslator?._handleClientMessage({
+          channel: 'translator:client',
+          message: {
+            action: 'translator:history-progress',
+            data: { ...args[0], serviceId },
+          },
+        });
+        break;
+      }
+
       case 'translator:settings-changed': {
         debug('Translator settings changed for', serviceId, args[0]);
         // Notify messageTranslator store

@@ -69,6 +69,117 @@ describe('MessageTranslator language send flow', () => {
     MessageTranslatorStore = storeModule.default;
   });
 
+  it('persists conversation language overrides without replacing the service default', () => {
+    const store: any = new MessageTranslatorStore();
+    store._handleClientMessage({
+      channel: 'translator:client',
+      message: {
+        action: 'translator:settings-changed',
+        data: {
+          serviceId: 'service-1',
+          settings: { conversationLanguages: { teammate: 'fr' } },
+        },
+      },
+    });
+    const restored: any = new MessageTranslatorStore();
+    expect(
+      restored.getServiceSettings('service-1').conversationLanguages,
+    ).toEqual({
+      teammate: 'fr',
+    });
+    expect(restored.getServiceSettings('service-1').targetLanguage).toBe('en');
+    expect(
+      restored.getServiceSettings('another-service').conversationLanguages,
+    ).toBeUndefined();
+  });
+
+  it('tracks history progress only for the active request and returns its result', async () => {
+    const store: any = new MessageTranslatorStore();
+    let finish: ((result: any) => void) | undefined;
+    const executeJavaScript = jest.fn(
+      () =>
+        new Promise(resolve => {
+          finish = resolve;
+        }),
+    );
+    store.stores = {
+      services: {
+        one: () => ({
+          recipe: { id: 'whatsapp' },
+          webview: { executeJavaScript },
+        }),
+      },
+    };
+    store._ensureWhatsAppInterceptor = jest.fn().mockResolvedValue('already');
+    const running = store.translateLoadedHistory('service-1');
+    await Promise.resolve();
+    const { requestId } = store.historyTranslationStates['service-1'];
+    const progress = {
+      requestId,
+      status: 'running',
+      completed: 1,
+      total: 2,
+      translated: 1,
+      failed: 0,
+      skipped: 0,
+    };
+    store._handleClientMessage({
+      channel: 'translator:client',
+      message: {
+        action: 'translator:history-progress',
+        data: { ...progress, serviceId: 'service-1' },
+      },
+    });
+    expect(store.historyTranslationStates['service-1'].completed).toBe(1);
+    store._handleClientMessage({
+      channel: 'translator:client',
+      message: {
+        action: 'translator:history-progress',
+        data: {
+          ...progress,
+          serviceId: 'service-1',
+          requestId: 'obsolete',
+          completed: 999,
+        },
+      },
+    });
+    expect(store.historyTranslationStates['service-1'].completed).toBe(1);
+    finish?.({ ...progress, status: 'completed', completed: 2, translated: 2 });
+    await running;
+    expect(store.historyTranslationStates['service-1'].status).toBe(
+      'completed',
+    );
+    expect(store.historyTranslationStates['service-1'].translated).toBe(2);
+  });
+
+  it('honors stopping history while the interceptor is still being prepared', async () => {
+    const store: any = new MessageTranslatorStore();
+    const executeJavaScript = jest.fn().mockResolvedValue(null);
+    store.stores = {
+      services: {
+        one: () => ({
+          recipe: { id: 'whatsapp' },
+          webview: { executeJavaScript },
+        }),
+      },
+    };
+    let ready: ((status: string) => void) | undefined;
+    store._ensureWhatsAppInterceptor = () =>
+      new Promise(resolve => {
+        ready = resolve;
+      });
+    const running = store.translateLoadedHistory('service-1');
+    await store.cancelHistoryTranslation('service-1');
+    expect(store.historyTranslationStates['service-1'].status).toBe('stopping');
+    ready?.('already');
+    await running;
+    expect(store.historyTranslationStates['service-1'].status).toBe(
+      'cancelled',
+    );
+    expect(executeJavaScript).toHaveBeenCalledTimes(1);
+    expect(executeJavaScript.mock.calls[0][0]).toContain('CancelHistory');
+  });
+
   it('pushes each supported myLanguage to webview config without mutating language code', () => {
     const sendIPCMessage = jest.fn();
     const store: any = new MessageTranslatorStore();

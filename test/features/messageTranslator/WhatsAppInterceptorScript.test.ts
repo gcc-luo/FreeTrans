@@ -243,7 +243,7 @@ describe('WhatsApp interceptor script regression', () => {
       "'.ferdium-translator-incoming-mismatch{display:block;margin:2px 0 4px;color:#b54708;font-size:11px;line-height:1.25;}',",
     );
     expect(injectedScript).toContain(
-      "const processIncomingMessageRow = async (row, reason = 'unknown') => {",
+      'const processIncomingMessageRow = async (',
     );
     expect(injectedScript).toContain('data-ferdium-incoming-error');
     expect(injectedScript).toContain(
